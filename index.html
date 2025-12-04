@@ -1,0 +1,1022 @@
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Save, Trash2, Plus, Play, FileText, Settings, BarChart3, Upload, Check, AlertCircle, X, Download, Sparkles, Loader2, Database, Info, Target, List, BookOpen, GraduationCap, Zap, ChevronRight, Search, Filter, FileUp, FileArchive, Eye, Grid, PieChart, FileJson, Cloud } from 'lucide-react';
+import { initializeApp } from "firebase/app";
+import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "firebase/auth";
+import { getFirestore, collection, doc, addDoc, deleteDoc, onSnapshot, writeBatch } from "firebase/firestore";
+
+// --- FIREBASE SETUP ---
+const firebaseConfig = JSON.parse(__firebase_config);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+// --- CONSTANTS & DEFAULT DATA ---
+
+// API Key for the environment (handled at runtime)
+const apiKey = ""; 
+
+// Instructional Areas mapping (Codes to Full Names)
+const INSTRUCTIONAL_AREAS = {
+  BL: "Business Law",
+  CM: "Channel Management",
+  CO: "Communications",
+  CR: "Customer Relations",
+  EC: "Economics",
+  EI: "Emotional Intelligence",
+  EN: "Entrepreneurship",
+  FI: "Financial Analysis",
+  FM: "Financial-Information Mgmt",
+  HR: "Human Resources Mgmt",
+  IM: "Information Management",
+  MK: "Marketing",
+  MP: "Market Planning",
+  NF: "Marketing-Information Mgmt",
+  OP: "Operations",
+  PD: "Professional Development",
+  PI: "Pricing",
+  PJ: "Project Management",
+  PM: "Product/Service Mgmt",
+  PR: "Promotion",
+  QM: "Quality Management",
+  RM: "Risk Management",
+  SE: "Selling",
+  SM: "Strategic Management",
+};
+
+const DEFAULT_BLUEPRINTS = {
+  "Finance": { BL: 7, CO: 5, CR: 5, EC: 6, EI: 9, EN: 1, FI: 24, FM: 9, HR: 1, IM: 6, MK: 1, OP: 6, PD: 13, RM: 6, SM: 1 },
+  "Entrepreneurship": { BL: 4, CM: 3, CO: 1, CR: 1, EC: 3, EI: 6, EN: 14, FI: 10, HR: 5, IM: 4, MP: 5, MK: 1, NF: 2, OP: 13 },
+  "Business Admin Core": { BL: 1, CO: 15, CR: 5, EC: 7, EI: 14, EN: 1, FI: 2, HR: 0, IM: 13, MK: 1, OP: 2, PD: 5 },
+  "Marketing": { BL: 1, CM: 8, CO: 8, EC: 5, EI: 8, FI: 5, IM: 8, MP: 8, NF: 11, OP: 6, PI: 3, PM: 11, PD: 6, PR: 9, SE: 6, SM: 1 },
+  "Hospitality": { BL: 2, CO: 8, CR: 10, EC: 5, EI: 8, FI: 5, HR: 5, IM: 8, OP: 10, PD: 5, PM: 5, SE: 5 },
+  "Business Management": { BL: 4, CO: 10, CR: 5, EC: 5, EI: 10, FI: 5, HR: 8, IM: 8, OP: 8, PD: 8, PJ: 5, SM: 5 }
+};
+
+const INITIAL_QUESTIONS = [
+  // FINANCE 2022
+  {
+    cluster: "Finance",
+    category: "BL",
+    pi: "Describe the nature of legally binding contracts",
+    question: "After being fired from his job, Jack wrote blog posts in which he criticized his former company and all of its employees. He made many negative comments, most of which were untrue. What tort is Jack committing?",
+    options: ["Defamation", "Invasion of privacy", "Battery", "Negligence"],
+    answer: "A",
+    rationale: "Defamation involves making false statements that harm an individual's or organization's reputation."
+  },
+  // FINANCE 2023
+  {
+    cluster: "Finance",
+    category: "BL",
+    pi: "Describe the nature of legally binding contracts",
+    question: "Which of the following is a characteristic of a legally binding contract:",
+    options: ["The contract must be written and signed.", "One of the parties must be in agreement.", "The contract must include an expiration date.", "Something of value must be exchanged."],
+    answer: "D",
+    rationale: "Something of value must be exchanged (Consideration) for a contract to be legally binding."
+  },
+  {
+    cluster: "Finance",
+    category: "SM",
+    pi: "Explain the concept of management",
+    question: "A piece of manufacturing equipment is an example of what type of resource?",
+    options: ["Material resource", "Informational resource", "Financial resource", "Human resource"],
+    answer: "A",
+    rationale: "Material resources are the equipment and supplies that businesses need to produce and/or sell their goods and services."
+  },
+  {
+    cluster: "Finance",
+    category: "RM",
+    pi: "Explain the nature of risk management",
+    question: "Which of the following is a benefit of risk management?",
+    options: ["Increased liability exposure", "Decreased employee satisfaction", "Lesser workplace safety regulations", "Avoidance of negligence lawsuits"],
+    answer: "D",
+    rationale: "Risk management practices reduce the chance that a company will be faced with negligence lawsuits."
+  },
+  // BUSINESS ADMIN CORE 2022
+  {
+    cluster: "Business Admin Core",
+    category: "BL",
+    pi: "Comply with legal requirements",
+    question: "The key to complying with laws and regulations is to focus on those that",
+    options: ["are the easiest to learn.", "bring serious consequences.", "only affect your career.", "apply to you."],
+    answer: "D",
+    rationale: "Businesspeople should focus on complying with the laws and regulations that specifically apply to their industry and operations."
+  },
+  // BUSINESS MANAGEMENT 2022
+  {
+    cluster: "Business Management",
+    category: "BL",
+    pi: "Explain types of business laws",
+    question: "Tessa and her friends were caught drinking alcohol underage. This is an example of breaking",
+    options: ["administrative law.", "civil law.", "criminal law.", "international law."],
+    answer: "C",
+    rationale: "Criminal law deals with offenses against the public, society, or the state."
+  },
+  // HOSPITALITY 2023
+  {
+    cluster: "Hospitality",
+    category: "BL",
+    pi: "Explain types of business ownership",
+    question: "An 'artificial being, invisible, intangible, and existing only in contemplation of the law' is the legal definition of a:",
+    options: ["Corporation", "Franchise", "Partnership", "Sole Proprietorship"],
+    answer: "A",
+    rationale: "A corporation is defined legally as an artificial being, invisible, intangible, and existing only in contemplation of the law."
+  },
+  {
+    cluster: "Hospitality",
+    category: "SM",
+    pi: "Discuss managerial considerations in directing",
+    question: "Directing is considered the 'heart' of management because:",
+    options: ["It is the only important function", "Top-level managers do it", "It is the point from which actual work starts", "Employees do not need direction"],
+    answer: "C",
+    rationale: "Directing is the source of employees' energy and performance, and it maintains the healthy functioning of the business."
+  },
+  // SAMPLE IMPORT FROM BAC2017
+  {
+    cluster: "Business Admin Core",
+    category: "PD", // Professional Development inferred
+    pi: "PD:032 Describe techniques for obtaining work experience",
+    question: "Entry-level positions provide employees with",
+    options: ["high salaries.", "basic job experience.", "management training.", "stock options."],
+    answer: "B",
+    rationale: "Entry-level positions are starting jobs that allow new employees to gain basic experience."
+  }
+];
+
+const MASTER_PI_LIST = [
+  // --- BUSINESS ADMIN CORE (BAC) ---
+  { code: "PD:032", cat: "PD", text: "Describe techniques for obtaining work experience (e.g., volunteer activities, internships)" },
+  { code: "PD:033", cat: "PD", text: "Explain the need for ongoing education as a worker" },
+  { code: "PD:034", cat: "PD", text: "Explain possible advancement patterns for jobs" },
+  { code: "PD:035", cat: "PD", text: "Identify skills needed to enhance career progression" },
+  { code: "PD:036", cat: "PD", text: "Utilize resources that can contribute to professional development" },
+  { code: "SM:001", cat: "SM", text: "Explain the concept of management" },
+  { code: "SM:100", cat: "SM", text: "Explain factors that affect management" },
+  { code: "SM:075", cat: "SM", text: "Explain the nature of risk management" },
+];
+
+// --- UTILS ---
+
+const cleanAndParseJSON = (text) => {
+  try {
+    let cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    const firstBracket = cleanText.indexOf('[');
+    const lastBracket = cleanText.lastIndexOf(']');
+    if (firstBracket !== -1 && lastBracket !== -1) {
+      cleanText = cleanText.substring(firstBracket, lastBracket + 1);
+    }
+    cleanText = cleanText.replace(/,\s*([\]}])/g, '$1');
+    return JSON.parse(cleanText);
+  } catch (e) {
+    console.error("JSON Parse Error:", e, text);
+    return [];
+  }
+};
+
+// --- HELPER COMPONENTS ---
+
+function GeneratorTab({ clusters, selectedCluster, setSelectedCluster, examLength, setExamLength, onStartExam, questions, onAddQuestions, blueprints }) {
+  const [useAI, setUseAI] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [progress, setProgress] = useState("");
+
+  const handleGenerate = async () => {
+    setIsGenerating(true);
+    const blueprint = blueprints[selectedCluster];
+    if (!blueprint) return;
+
+    const totalBlueprintCount = Object.values(blueprint).reduce((a, b) => a + b, 0);
+    const scaleFactor = examLength / totalBlueprintCount;
+    
+    let finalExam = [];
+    const poolByCategory = {};
+    
+    questions.forEach(q => {
+      if (q.cluster === selectedCluster || q.cluster === "Business Admin Core" || q.cluster === "AI Generated" || q.cluster === "Imported") {
+         if (!poolByCategory[q.category]) poolByCategory[q.category] = [];
+         poolByCategory[q.category].push(q);
+      }
+    });
+
+    const categories = Object.keys(blueprint);
+    let newQuestionsAccumulator = [];
+
+    for (const cat of categories) {
+      const targetCount = Math.round(blueprint[cat] * scaleFactor);
+      if (targetCount <= 0) continue;
+
+      const available = poolByCategory[cat] || [];
+      const shuffledAvailable = [...available].sort(() => 0.5 - Math.random());
+      const existingToUse = shuffledAvailable.slice(0, targetCount);
+      finalExam.push(...existingToUse);
+
+      const missingCount = targetCount - existingToUse.length;
+
+      if (missingCount > 0) {
+        if (useAI) {
+          setProgress(`Generating ${missingCount} questions for ${INSTRUCTIONAL_AREAS[cat]}...`);
+          try {
+            const prompt = `
+              Generate ${missingCount} multiple-choice questions for DECA exam.
+              Cluster: ${selectedCluster}
+              Instructional Area: ${INSTRUCTIONAL_AREAS[cat]} (${cat}).
+              Difficulty: High School Competition Level.
+              Format: JSON array ONLY: [{"question": "...", "options": ["A", "B", "C", "D"], "answer": "A", "rationale": "..."}]
+              Do NOT include markdown formatting.
+            `;
+            
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify({ 
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: { responseMimeType: "application/json" }
+                })
+            });
+            const data = await response.json();
+            const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+            
+            if (!text) throw new Error("Empty response from AI");
+            
+            const parsed = cleanAndParseJSON(text);
+            
+            const generated = parsed.map(q => ({
+              cluster: "AI Generated",
+              category: cat,
+              pi: "AI Generated based on Blueprint",
+              question: q.question,
+              options: q.options,
+              answer: q.answer,
+              rationale: q.rationale || "No rationale provided."
+            }));
+            
+            newQuestionsAccumulator.push(...generated);
+            finalExam.push(...generated);
+            await new Promise(r => setTimeout(r, 800));
+
+          } catch (e) {
+            console.error("Error generating for", cat, e);
+            for(let i=0; i<missingCount; i++) finalExam.push(createPlaceholder(cat, selectedCluster, i));
+          }
+        } else {
+          for(let i=0; i<missingCount; i++) finalExam.push(createPlaceholder(cat, selectedCluster, i));
+        }
+      }
+    }
+
+    if (newQuestionsAccumulator.length > 0) {
+      // Save to DB!
+      await onAddQuestions(newQuestionsAccumulator);
+    }
+
+    finalExam = finalExam.sort(() => 0.5 - Math.random());
+    if (finalExam.length > examLength) finalExam = finalExam.slice(0, examLength);
+    while (finalExam.length < examLength) {
+       finalExam.push(createPlaceholder("SM", selectedCluster, 999));
+    }
+
+    setIsGenerating(false);
+    onStartExam(finalExam);
+  };
+
+  const createPlaceholder = (cat, cluster, i) => ({
+    id: `gap-${cat}-${Date.now()}-${i}`,
+    cluster: cluster,
+    category: cat,
+    pi: "Blueprint Gap",
+    question: `[Placeholder] Not enough questions in bank for ${INSTRUCTIONAL_AREAS[cat]}. Add more or enable AI Fill.`,
+    options: ["A", "B", "C", "D"],
+    answer: "A",
+    rationale: "Placeholder."
+  });
+
+  return (
+    <div className="p-8">
+      <h2 className="text-2xl font-bold mb-6 text-slate-800">Generate Practice Exam</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="space-y-6">
+          <div>
+            <label className="block text-sm font-medium text-slate-600 mb-2">Select Cluster</label>
+            <select value={selectedCluster} onChange={(e) => setSelectedCluster(e.target.value)} className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+              {clusters.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-600 mb-2">Number of Questions</label>
+            <div className="grid grid-cols-3 gap-3">
+              {[25, 50, 100].map(num => (
+                <button key={num} onClick={() => setExamLength(num)} className={`py-3 rounded-lg border font-medium transition-all ${examLength === num ? 'bg-blue-50 border-blue-500 text-blue-700' : 'border-slate-200 hover:border-blue-300 text-slate-600'}`}>
+                  {num}
+                </button>
+              ))}
+            </div>
+          </div>
+          
+          <div className="p-4 bg-purple-50 border border-purple-100 rounded-xl">
+            <div className="flex items-center gap-3 mb-2">
+                <input 
+                  type="checkbox" 
+                  id="useAI" 
+                  checked={useAI} 
+                  onChange={(e) => setUseAI(e.target.checked)}
+                  className="w-5 h-5 text-purple-600 rounded focus:ring-purple-500"
+                />
+                <label htmlFor="useAI" className="font-bold text-purple-900 cursor-pointer flex items-center gap-2">
+                   <Sparkles size={18}/> Magic AI Fill
+                </label>
+            </div>
+            <p className="text-xs text-purple-700 ml-8">
+                If checked, Gemini AI will automatically generate new questions to fill any gaps in your blueprint. The new questions will be <strong>saved to the bank</strong>.
+                <br/><span className="italic opacity-70">Note: Generating a full 100-question exam from scratch may take 1-2 minutes.</span>
+            </p>
+          </div>
+
+          <div className="pt-4">
+            <button 
+                onClick={handleGenerate} 
+                disabled={isGenerating}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-lg shadow-lg shadow-blue-200 transition-all transform active:scale-95 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {isGenerating ? <Loader2 className="animate-spin" /> : <Play size={20} />} 
+              {isGenerating ? "Building Exam..." : "Start Exam"}
+            </button>
+            {isGenerating && <p className="text-center text-xs text-slate-500 mt-2 animate-pulse">{progress}</p>}
+          </div>
+        </div>
+        <div className="bg-slate-50 p-6 rounded-xl border border-slate-100 h-fit">
+          <h3 className="font-semibold text-slate-700 mb-4 flex items-center gap-2">
+            <Cloud size={18} /> Cloud Status
+          </h3>
+          <div className="space-y-3 text-sm text-slate-600">
+            <div className="flex justify-between p-2 bg-white rounded border border-slate-200">
+              <span>Total Questions in Cloud:</span> <span className="font-mono font-bold">{questions.length}</span>
+            </div>
+            <div className="flex justify-between p-2 bg-white rounded border border-slate-200">
+              <span>Selected Cluster:</span> <span className="font-bold text-blue-600">{selectedCluster}</span>
+            </div>
+            <div className="mt-4 p-3 bg-blue-50 border border-blue-100 rounded text-xs text-blue-800 flex items-start gap-2">
+              <Info size={14} className="flex-shrink-0 mt-0.5" />
+              <span>Questions are now saved to the cloud and shared with everyone.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BlueprintsTab({ blueprints, setBlueprints }) {
+  const [editingCluster, setEditingCluster] = useState(Object.keys(blueprints)[0]);
+  const handleUpdate = (cat, val) => {
+    setBlueprints(prev => ({
+      ...prev, [editingCluster]: { ...prev[editingCluster], [cat]: parseInt(val) || 0 }
+    }));
+  };
+  const currentBlueprint = blueprints[editingCluster];
+
+  return (
+    <div className="p-6 h-[calc(100vh-100px)] flex flex-col">
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold text-slate-800">Exam Blueprints</h2>
+        <select value={editingCluster} onChange={(e) => setEditingCluster(e.target.value)} className="p-2 border rounded-lg text-sm">
+          {Object.keys(blueprints).map(b => <option key={b} value={b}>{b}</option>)}
+        </select>
+      </div>
+      <div className="flex-1 overflow-auto pr-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Object.keys(currentBlueprint).sort().map(code => {
+            const count = currentBlueprint[code] || 0;
+            return (
+              <div key={code} className={`flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-lg ${count === 0 ? 'opacity-50' : ''}`}>
+                <div className="flex flex-col"><span className="font-medium text-slate-700 text-sm">{INSTRUCTIONAL_AREAS[code] || code}</span><span className="text-xs text-slate-400 font-mono">{code}</span></div>
+                <input type="number" value={count} onChange={(e) => handleUpdate(code, e.target.value)} className="w-16 p-2 text-right border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QuestionBankTab({ questions, onAddQuestions, onDeleteQuestion, onDeleteAll }) {
+  const [mode, setMode] = useState('list'); // 'list', 'import', 'ai'
+  const [viewFormat, setViewFormat] = useState('list'); // 'list' or 'grid'
+  const [importText, setImportText] = useState("");
+  const fileInputRef = useRef(null);
+  const [notification, setNotification] = useState(null);
+  const [selectedQuestion, setSelectedQuestion] = useState(null);
+  
+  // Filter States
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterCategory, setFilterCategory] = useState("ALL");
+  const [importCategory, setImportCategory] = useState("SM");
+
+  // AI States for Ad-hoc
+  const [aiCategory, setAiCategory] = useState("BL");
+  const [aiCount, setAiCount] = useState(5);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  // Delete All
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => setNotification(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
+
+  // QUESTION COUNTS - Calculated for dashboard
+  const categoryCounts = useMemo(() => {
+    const counts = {};
+    Object.keys(INSTRUCTIONAL_AREAS).forEach(key => counts[key] = 0);
+    questions.forEach(q => {
+        if (counts[q.category] !== undefined) counts[q.category]++;
+        else {
+            if (!counts['Other']) counts['Other'] = 0;
+            counts['Other']++;
+        }
+    });
+    return counts;
+  }, [questions]);
+
+  const loadJSZip = () => {
+    return new Promise((resolve, reject) => {
+      if (window.JSZip) { resolve(window.JSZip); return; }
+      const script = document.createElement('script');
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
+      script.onload = () => resolve(window.JSZip);
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+  };
+
+  const processImportText = async (text) => {
+    try {
+      const newQuestions = [];
+      const trimmedText = text.trim();
+      
+      // 1. CHECK IF XML (Blackboard/Canvas export from ZIP)
+      if (trimmedText.startsWith("<?xml") || trimmedText.includes("<POOL>")) {
+         const parser = new DOMParser();
+         const xmlDoc = parser.parseFromString(text, "text/xml");
+         const qNodes = xmlDoc.getElementsByTagName("QUESTION");
+         
+         Array.from(qNodes).forEach(qNode => {
+            const bodyNode = qNode.getElementsByTagName("BODY")[0];
+            let qText = "";
+            if (bodyNode) {
+                const textNodes = bodyNode.getElementsByTagName("TEXT");
+                if(textNodes.length > 0) qText = textNodes[0].textContent;
+                else qText = bodyNode.textContent;
+            }
+            qText = qText.replace(/<[^>]*>/g, "").trim();
+            const answers = [];
+            const ansNodes = qNode.getElementsByTagName("ANSWER");
+            Array.from(ansNodes).forEach(aNode => {
+                let aText = "";
+                const textNodes = aNode.getElementsByTagName("TEXT");
+                if(textNodes.length > 0) aText = textNodes[0].textContent;
+                else aText = aNode.textContent;
+                aText = aText.replace(/<[^>]*>/g, "").trim();
+                if(aText) answers.push(aText);
+            });
+            
+            if (qText && answers.length >= 2) {
+                newQuestions.push({
+                    cluster: "Imported",
+                    category: importCategory, 
+                    pi: "Imported from Blackboard/Zip",
+                    question: qText,
+                    options: answers.slice(0,4),
+                    answer: "A", 
+                    rationale: "Imported from file."
+                });
+            }
+         });
+      }
+      // 2. CHECK IF JSON BACKUP
+      else if (trimmedText.startsWith("[") && trimmedText.endsWith("]")) {
+          try {
+              const jsonData = JSON.parse(trimmedText);
+              if (Array.isArray(jsonData)) {
+                  newQuestions.push(...jsonData);
+              }
+          } catch(e) { console.error("Not a valid JSON backup"); }
+      } 
+      // 3. TEXT BLOCK IMPORT
+      else {
+          const lines = text.split('\n');
+          let currentQ = {};
+          let state = 'start'; 
+          
+          lines.forEach(line => {
+             line = line.trim();
+             if(!line) return;
+
+             const qStart = line.match(/^(\d+)\.\s+(.*)/);
+             const optStart = line.match(/^([A-D])\.\s+(.*)/);
+             const keyLine = line.match(/^SOURCE:\s*([A-Z]{2}):/i);
+             
+             if (qStart || (state !== 'opt' && !optStart && !keyLine)) {
+                 if (currentQ.question && currentQ.options && currentQ.options.length >= 2) {
+                     newQuestions.push(currentQ);
+                 }
+                 currentQ = {
+                     cluster: "Imported",
+                     category: importCategory,
+                     question: qStart ? qStart[2] : line,
+                     options: [],
+                     answer: "A",
+                     rationale: "Imported."
+                 };
+                 state = 'q';
+             } else if (optStart && currentQ.question) {
+                 state = 'opt';
+                 currentQ.options.push(optStart[2]);
+             } else if (keyLine && currentQ.question) {
+                 currentQ.category = keyLine[1].toUpperCase();
+                 currentQ.pi = line.replace("SOURCE:", "").trim();
+             }
+          });
+          if (currentQ.question && currentQ.options && currentQ.options.length >= 2) {
+             newQuestions.push(currentQ);
+          }
+      }
+
+      if (newQuestions.length > 0) {
+        await onAddQuestions(newQuestions);
+        setNotification({ type: 'success', msg: `Successfully imported ${newQuestions.length} questions.` });
+        setImportText("");
+        setMode('list');
+      } else {
+        setNotification({ type: 'error', msg: "No valid questions found." });
+      }
+    } catch (e) {
+      console.error(e);
+      setNotification({ type: 'error', msg: "Import parsing failed." });
+    }
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    if (file.name.endsWith('.zip')) {
+        try {
+            const JSZip = await loadJSZip();
+            const zip = await new JSZip().loadAsync(file);
+            const datFileName = Object.keys(zip.files).find(name => name.endsWith('.dat') && name.includes('res'));
+            if (datFileName) {
+                const text = await zip.file(datFileName).async("string");
+                setImportText(text.slice(0, 500) + "..."); 
+                processImportText(text);
+            } else {
+                setNotification({ type: 'error', msg: "No .dat file found in ZIP." });
+            }
+        } catch (err) {
+            setNotification({ type: 'error', msg: "Failed to read ZIP file." });
+        }
+    } else {
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            const text = evt.target.result;
+            setImportText(text.slice(0, 500) + "..."); 
+            processImportText(text);
+        };
+        reader.readAsText(file);
+    }
+  };
+
+  const handleDownloadBank = () => {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(questions, null, 2));
+      const downloadAnchorNode = document.createElement('a');
+      downloadAnchorNode.setAttribute("href", dataStr);
+      downloadAnchorNode.setAttribute("download", "deca_question_bank.json");
+      document.body.appendChild(downloadAnchorNode);
+      downloadAnchorNode.click();
+      downloadAnchorNode.remove();
+  };
+
+  const handleAIGenerate = async () => {
+    setIsGenerating(true);
+    try {
+        const prompt = `Generate ${aiCount} multiple-choice questions for DECA exam. Category: ${aiCategory}. JSON Format: [{"question":"...","options":["A","B","C","D"],"answer":"A","rationale":"..."}]. Do not use markdown.`;
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ 
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: { responseMimeType: "application/json" }
+            })
+        });
+        const data = await response.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        const parsed = cleanAndParseJSON(text);
+        const generated = parsed.map(q => ({
+            cluster: "AI Generated", category: aiCategory, pi: "Ad-hoc AI",
+            question: q.question, options: q.options, answer: q.answer, rationale: q.rationale || "No rationale provided."
+        }));
+        await onAddQuestions(generated);
+        setNotification({ type: 'success', msg: `Generated and Saved ${generated.length} questions.` });
+        setMode('list');
+    } catch(e) { console.error(e); } finally { setIsGenerating(false); }
+  };
+
+  const handleFilterSelect = (e) => {
+    setFilterCategory(e.target.value);
+    // Reset view mode to list to see results
+    // setViewFormat('list'); 
+  };
+
+  const filteredQuestions = questions.filter(q => {
+    const matchesSearch = q.question.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = filterCategory === "ALL" || q.category === filterCategory;
+    return matchesSearch && matchesCategory;
+  });
+
+  return (
+    <div className="p-6 h-[calc(100vh-100px)] flex flex-col relative">
+      {notification && (
+        <div className={`absolute top-4 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-lg shadow-lg z-50 flex items-center gap-2 font-bold ${notification.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+           {notification.type === 'success' ? <Check size={18}/> : <AlertCircle size={18}/>} {notification.msg}
+        </div>
+      )}
+
+      {showDeleteConfirm && (
+        <div className="absolute inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
+            <div className="bg-white p-6 rounded-xl shadow-2xl max-w-md w-full border border-red-100">
+                <h3 className="text-xl font-bold text-red-600 mb-2">Danger Zone</h3>
+                <p className="text-slate-600 mb-4 text-sm">Type "DELETE" to confirm clearing {questions.length} questions from the cloud database.</p>
+                <input type="text" value={deleteConfirmText} onChange={(e) => setDeleteConfirmText(e.target.value)} className="w-full p-2 border mb-4"/>
+                <div className="flex gap-2">
+                    <button onClick={() => setShowDeleteConfirm(false)} className="flex-1 py-2 border rounded">Cancel</button>
+                    <button onClick={() => { if(deleteConfirmText === "DELETE") { onDeleteAll(); setShowDeleteConfirm(false); } }} disabled={deleteConfirmText !== "DELETE"} className="flex-1 py-2 bg-red-600 text-white rounded disabled:opacity-50">Delete All</button>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {selectedQuestion && (
+        <div className="absolute inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4 backdrop-blur-sm">
+            <div className="bg-white p-8 rounded-xl shadow-2xl max-w-2xl w-full border border-slate-200 flex flex-col max-h-[80vh]">
+                <div className="flex justify-between items-start mb-4">
+                    <div>
+                        <span className="inline-block px-2 py-1 bg-blue-100 text-blue-800 text-xs font-bold rounded mb-2">{selectedQuestion.category}</span>
+                        <h3 className="text-lg font-bold text-slate-900">{selectedQuestion.pi || "General Question"}</h3>
+                    </div>
+                    <button onClick={() => setSelectedQuestion(null)} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
+                </div>
+                <div className="overflow-y-auto flex-1 pr-2">
+                    <p className="text-lg text-slate-800 mb-6 font-medium">{selectedQuestion.question}</p>
+                    <div className="space-y-2 mb-6">
+                        {selectedQuestion.options.map((opt, i) => {
+                            const letter = ['A','B','C','D'][i];
+                            const isCorrect = selectedQuestion.answer === letter;
+                            return (
+                                <div key={i} className={`p-3 rounded border flex items-center gap-3 ${isCorrect ? 'bg-green-50 border-green-500 text-green-900' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
+                                    <span className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold ${isCorrect ? 'bg-green-200' : 'bg-slate-200'}`}>{letter}</span>
+                                    {opt}
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                        <h4 className="font-bold text-blue-800 text-sm mb-1">Rationale</h4>
+                        <p className="text-blue-700 text-sm">{selectedQuestion.rationale}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+      )}
+
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold text-slate-800">Question Bank</h2>
+        <div className="flex gap-2">
+          {questions.length === 0 && (
+             <button onClick={() => onAddQuestions(INITIAL_QUESTIONS)} className="flex items-center gap-2 px-3 py-2 bg-green-50 text-green-600 border border-green-200 rounded hover:bg-green-100"><Database size={16}/> Seed Sample Data</button>
+          )}
+          <button onClick={handleDownloadBank} className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-600 border border-blue-200 rounded hover:bg-blue-100" title="Save Bank to JSON File"><Download size={16}/> <span className="hidden md:inline">Backup</span></button>
+          <button onClick={() => setShowDeleteConfirm(true)} className="flex items-center gap-2 px-3 py-2 bg-red-50 text-red-600 border border-red-200 rounded hover:bg-red-100"><Trash2 size={16}/></button>
+          <button onClick={() => setMode('import')} className={`flex items-center gap-2 px-4 py-2 rounded font-medium ${mode === 'import' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700'}`}><Plus size={16}/> Import</button>
+          <button onClick={() => setMode('ai')} className={`flex items-center gap-2 px-4 py-2 rounded font-medium ${mode === 'ai' ? 'bg-purple-600 text-white' : 'bg-purple-50 text-purple-700'}`}><Sparkles size={16}/> AI Add</button>
+          <button onClick={() => setMode('list')} className={`flex items-center gap-2 px-4 py-2 rounded font-medium ${mode === 'list' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-700'}`}><List size={16}/> View List</button>
+        </div>
+      </div>
+
+      {mode === 'import' && (
+        <div className="flex-1 flex flex-col gap-4">
+          <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg text-sm text-amber-800">
+            <strong>Import Options:</strong> 
+            <ul className="list-disc list-inside mt-2">
+               <li>Upload a <strong>ZIP</strong> (Blackboard format)</li>
+               <li>Upload a <strong>JSON</strong> backup file</li>
+               <li>Paste text directly from a <strong>PDF</strong></li>
+            </ul>
+          </div>
+          <div className="bg-white p-4 border rounded-lg">
+             <label className="block text-xs font-bold text-slate-500 mb-1">Default Category (if missing in file)</label>
+             <select value={importCategory} onChange={e => setImportCategory(e.target.value)} className="w-full p-2 border rounded">{Object.keys(INSTRUCTIONAL_AREAS).map(k => <option key={k} value={k}>{k}</option>)}</select>
+          </div>
+          <div className="flex gap-2">
+             <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".zip,.txt,.dat,.xml,.json"/>
+             <button onClick={() => fileInputRef.current.click()} className="px-4 py-2 bg-blue-100 text-blue-700 rounded border border-blue-200 hover:bg-blue-200 flex items-center gap-2"><FileArchive size={18}/> Upload File</button>
+          </div>
+          <textarea className="flex-1 w-full p-4 border rounded-lg font-mono text-xs" placeholder="Or paste text..." value={importText} onChange={e => setImportText(e.target.value)}/>
+          <button onClick={() => processImportText(importText)} className="w-full py-3 bg-slate-800 text-white rounded font-bold">Process Text</button>
+        </div>
+      )}
+
+      {mode === 'ai' && (
+        <div className="flex-1 flex flex-col items-center justify-center bg-purple-50 p-8 rounded-lg">
+           <div className="bg-white p-6 rounded-xl shadow-sm w-full max-w-md space-y-4">
+              <h3 className="font-bold text-purple-800">Quick AI Add</h3>
+              <select value={aiCategory} onChange={e => setAiCategory(e.target.value)} className="w-full p-2 border rounded">{Object.keys(INSTRUCTIONAL_AREAS).map(k => <option key={k} value={k}>{k}</option>)}</select>
+              <select value={aiCount} onChange={e => setAiCount(Number(e.target.value))} className="w-full p-2 border rounded"><option value="1">1 Question</option><option value="5">5 Questions</option><option value="10">10 Questions</option></select>
+              <button onClick={handleAIGenerate} disabled={isGenerating} className="w-full py-2 bg-purple-600 text-white rounded font-bold">{isGenerating ? "Generating..." : "Generate"}</button>
+           </div>
+        </div>
+      )}
+
+      {mode === 'list' && (
+        <div className="flex-1 overflow-auto">
+          {/* Question Counts Dashboard - UPDATED TO BE CLICKABLE */}
+          <div className="mb-6 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            {Object.entries(INSTRUCTIONAL_AREAS).map(([code, name]) => {
+              const count = categoryCounts[code] || 0;
+              let bgColor = "bg-slate-100 border-slate-200 hover:bg-slate-200";
+              let textColor = "text-slate-500";
+              
+              if (count === 0) {
+                 // Empty
+              } else if (count < 5) {
+                 bgColor = "bg-amber-50 border-amber-200 hover:bg-amber-100";
+                 textColor = "text-amber-700";
+              } else {
+                 bgColor = "bg-green-50 border-green-200 hover:bg-green-100";
+                 textColor = "text-green-700";
+              }
+              
+              // If this category is selected, highlight it strongly
+              if (filterCategory === code) {
+                  bgColor = "bg-blue-100 border-blue-300 ring-2 ring-blue-400";
+                  textColor = "text-blue-900";
+              }
+
+              return (
+                <div 
+                    key={code} 
+                    onClick={() => setFilterCategory(code === filterCategory ? "ALL" : code)}
+                    className={`border rounded-lg p-2 flex flex-col items-center justify-center cursor-pointer transition-all ${bgColor}`}
+                >
+                   <span className={`text-xl font-bold ${textColor}`}>{count}</span>
+                   <span className="text-xs text-slate-500 font-medium">{code}</span>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-col md:flex-row gap-2 mb-4">
+             <input type="text" placeholder="Search..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="flex-1 p-2 border rounded"/>
+             <select value={filterCategory} onChange={handleFilterSelect} className="p-2 border rounded w-full md:w-48"><option value="ALL">All Categories</option>{Object.keys(INSTRUCTIONAL_AREAS).map(k => <option key={k} value={k}>{k}</option>)}</select>
+             <button onClick={() => setViewFormat(viewFormat === 'list' ? 'grid' : 'list')} className="p-2 border rounded bg-white hover:bg-slate-50 text-slate-600" title="Toggle View">
+               {viewFormat === 'list' ? <Grid size={20}/> : <List size={20}/>}
+             </button>
+          </div>
+          
+          {viewFormat === 'list' ? (
+            <table className="w-full text-left border-collapse">
+                <thead><tr className="bg-slate-100 text-sm"><th className="p-3">Cat</th><th className="p-3">Question</th><th className="p-3 text-right">Action</th></tr></thead>
+                <tbody>
+                {filteredQuestions.map(q => (
+                    <tr key={q.id} className="border-b text-sm hover:bg-slate-50">
+                    <td className="p-3 font-bold text-blue-600">{q.category}</td>
+                    <td className="p-3 max-w-xs truncate cursor-pointer" onClick={() => setSelectedQuestion(q)}>{q.question}</td>
+                    <td className="p-3 text-right">
+                        <button onClick={() => setSelectedQuestion(q)} className="text-slate-400 hover:text-blue-600 mr-2"><Eye size={16}/></button>
+                        <button onClick={() => onDeleteQuestion(q.id)} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button>
+                    </td>
+                    </tr>
+                ))}
+                </tbody>
+            </table>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredQuestions.map(q => (
+                    <div key={q.id} className="bg-white border border-slate-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer relative group" onClick={() => setSelectedQuestion(q)}>
+                        <div className="flex justify-between items-start mb-2">
+                            <span className="text-xs font-bold bg-blue-100 text-blue-800 px-2 py-1 rounded">{q.category}</span>
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); onDeleteQuestion(q.id); }} 
+                                className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                                <Trash2 size={16}/>
+                            </button>
+                        </div>
+                        <p className="text-sm text-slate-800 line-clamp-3 mb-2 font-medium">{q.question}</p>
+                        <p className="text-xs text-slate-400 truncate">{q.pi || "No PI assigned"}</p>
+                    </div>
+                ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- MAIN APP ---
+
+export default function DECATestGenerator() {
+  const [activeTab, setActiveTab] = useState('blueprints');
+  const [user, setUser] = useState(null);
+  const [questions, setQuestions] = useState([]); // From Firebase
+  const [blueprints, setBlueprints] = useState(DEFAULT_BLUEPRINTS);
+  
+  // State for Generator
+  const [selectedCluster, setSelectedCluster] = useState("Finance");
+  const [examLength, setExamLength] = useState(100);
+  const [generatedExam, setGeneratedExam] = useState(null);
+  
+  // State for Taking Exam
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [userAnswers, setUserAnswers] = useState({});
+  const [examMode, setExamMode] = useState('taking');
+  
+  // 1. Auth
+  useEffect(() => {
+    const initAuth = async () => {
+      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+        await signInWithCustomToken(auth, __initial_auth_token);
+      } else {
+        await signInAnonymously(auth);
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
+  }, []);
+
+  // 2. Real-time DB Sync
+  useEffect(() => {
+    if (!user) return;
+    // Use public collection for shared access
+    const qRef = collection(db, 'artifacts', appId, 'public', 'data', 'questions');
+    
+    const unsubscribe = onSnapshot(qRef, (snapshot) => {
+      const loadedQuestions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setQuestions(loadedQuestions);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // 3. Local Storage for Blueprints (Personal Preference)
+  useEffect(() => {
+    const savedBlueprints = localStorage.getItem('deca_blueprints');
+    if (savedBlueprints) setBlueprints(JSON.parse(savedBlueprints));
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('deca_blueprints', JSON.stringify(blueprints));
+  }, [blueprints]);
+
+  // HANDLERS
+  const handleAddQuestions = async (newQuestions) => {
+      if (!user) return;
+      const qRef = collection(db, 'artifacts', appId, 'public', 'data', 'questions');
+      
+      // Batch writes (limit 500 per batch)
+      const batchSize = 450; 
+      for (let i = 0; i < newQuestions.length; i += batchSize) {
+          const chunk = newQuestions.slice(i, i + batchSize);
+          const batch = writeBatch(db);
+          chunk.forEach(q => {
+              const newDocRef = doc(qRef); // Auto ID
+              // Remove temporary local ID if exists to avoid confusion
+              const { id, ...qData } = q; 
+              
+              // Sanitize to remove undefined
+              const cleanData = {};
+              Object.keys(qData).forEach(key => {
+                cleanData[key] = qData[key] === undefined ? "N/A" : qData[key];
+              });
+
+              batch.set(newDocRef, cleanData);
+          });
+          await batch.commit();
+      }
+  };
+
+  const handleDeleteQuestion = async (id) => {
+      if (!user) return;
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'questions', id));
+  };
+
+  const handleDeleteAll = async () => {
+      if (!user) return;
+      const qRef = collection(db, 'artifacts', appId, 'public', 'data', 'questions');
+      // Need to fetch all IDs first to delete
+      // Since we have them in state 'questions', use that
+      const batchSize = 450;
+      for (let i = 0; i < questions.length; i += batchSize) {
+          const chunk = questions.slice(i, i + batchSize);
+          const batch = writeBatch(db);
+          chunk.forEach(q => {
+              batch.delete(doc(qRef, q.id));
+          });
+          await batch.commit();
+      }
+  };
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'blueprints': return <BlueprintsTab blueprints={blueprints} setBlueprints={setBlueprints} />;
+      case 'questions': return (
+        <QuestionBankTab 
+          questions={questions} 
+          onAddQuestions={handleAddQuestions}
+          onDeleteQuestion={handleDeleteQuestion}
+          onDeleteAll={handleDeleteAll}
+        />
+      );
+      case 'generate': return (
+        <GeneratorTab 
+          clusters={Object.keys(blueprints)} 
+          selectedCluster={selectedCluster} 
+          setSelectedCluster={setSelectedCluster}
+          examLength={examLength}
+          setExamLength={setExamLength}
+          questions={questions}
+          onAddQuestions={handleAddQuestions}
+          blueprints={blueprints}
+          onStartExam={(exam) => {
+            setGeneratedExam(exam);
+            setExamMode('taking');
+            setUserAnswers({});
+            setCurrentQuestionIndex(0);
+            setActiveTab('exam');
+          }}
+        />
+      );
+      case 'exam': return generatedExam ? (
+        <ExamSession 
+          exam={generatedExam} 
+          mode={examMode} 
+          setMode={setExamMode}
+          userAnswers={userAnswers}
+          setUserAnswers={setUserAnswers}
+          currentIndex={currentQuestionIndex}
+          setCurrentIndex={setCurrentQuestionIndex}
+          onExit={() => setActiveTab('generate')}
+        />
+      ) : <div className="p-8 text-center text-gray-500">No exam generated yet.</div>;
+      default: return null;
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col md:flex-row">
+      <nav className="w-full md:w-64 bg-slate-900 text-white flex-shrink-0">
+        <div className="p-6">
+          <h1 className="text-xl font-bold flex items-center gap-2">
+            <BarChart3 className="text-blue-400" />
+            DECA Prep
+          </h1>
+          <p className="text-xs text-slate-400 mt-1">Exam Generator & Bank</p>
+        </div>
+        <ul className="space-y-1 px-3">
+          {[
+            { id: 'generate', label: 'Generate Test', icon: Play },
+            { id: 'exam', label: 'Current Session', icon: FileText, disabled: !generatedExam },
+            { id: 'blueprints', label: 'Exam Blueprints', icon: Settings },
+            { id: 'questions', label: 'Question Bank', icon: Upload },
+          ].map(item => (
+            <li key={item.id}>
+              <button
+                disabled={item.disabled}
+                onClick={() => setActiveTab(item.id)}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                  activeTab === item.id 
+                    ? 'bg-blue-600 text-white' 
+                    : item.disabled ? 'text-slate-600 cursor-not-allowed' : 'text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                <item.icon size={18} />
+                {item.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
+      <main className="flex-1 overflow-auto p-4 md:p-8">
+        <div className="max-w-6xl mx-auto bg-white shadow-sm border border-slate-200 rounded-xl min-h-[600px]">
+          {renderContent()}
+        </div>
+      </main>
+    </div>
+  );
+}
