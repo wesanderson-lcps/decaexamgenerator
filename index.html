@@ -39,54 +39,53 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect, useRef, useMemo } from 'react';
         import { createRoot } from 'react-dom/client';
-        import { Save, Trash2, Plus, Play, FileText, Settings, BarChart3, Upload, Check, AlertCircle, X, Download, Sparkles, Loader2, Database, Info, Target, List, BookOpen, GraduationCap, Zap, ChevronRight, Search, Filter, FileUp, FileArchive, Eye, Grid, PieChart, FileJson, Cloud, CloudOff, HardDrive } from 'lucide-react';
+        import { Save, Trash2, Plus, Play, FileText, Settings, BarChart3, Upload, Check, AlertCircle, X, Download, Sparkles, Loader2, Database, Info, Target, List, BookOpen, GraduationCap, Zap, ChevronRight, Search, Filter, FileUp, FileArchive, Eye, Grid, PieChart, FileJson, Cloud, CloudOff, HardDrive, TriangleAlert } from 'lucide-react';
         import { initializeApp } from "firebase/app";
-        // Removed signInWithCustomToken import as it is not used in static site
         import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
         import { getFirestore, collection, doc, addDoc, deleteDoc, onSnapshot, writeBatch } from "firebase/firestore";
 
         // ------------------------------------------------------------------
-        // CONFIGURATION SECTION
+        // 1. PASTE YOUR FIREBASE CONFIGURATION HERE
         // ------------------------------------------------------------------
-        
-        // 1. FIREBASE CONFIG (For Cloud/Sharing)
-        // If you want data to be shared between users, replace values below.
-        // If you leave these as default, the app will run in "Offline Mode".
         const manualFirebaseConfig = {
             apiKey: "AIzaSyBjAuXLXvPOYyCrWe8oplahBWMsnASi6Qo",
             authDomain: "aidecaexams.firebaseapp.com",
             projectId: "aidecaexams",
             storageBucket: "aidecaexams.firebasestorage.app",
             messagingSenderId: "895592591782",
-            appId: "1:895592591782:web:83ac6d77e3f6644c589f67"
-        };
+            appId: "1:895592591782:web:83ac6d77e3f6644c589f67",
+            measurementId: "G-D849ZSZG5K"
+};
 
-        // 2. GEMINI API KEY (For AI Generation)
+        // ------------------------------------------------------------------
+        // 2. PASTE YOUR GOOGLE GEMINI API KEY HERE
+        // ------------------------------------------------------------------
         const manualApiKey = "AIzaSyBLF-lssgcWzLSbDitBthQydSqNHr9cSos"; 
 
         // ------------------------------------------------------------------
-        // SYSTEM INITIALIZATION (DO NOT EDIT BELOW)
+        // SYSTEM INITIALIZATION
         // ------------------------------------------------------------------
         
         let firebaseConfig = manualFirebaseConfig;
         let apiKey = manualApiKey;
         let useCloud = false;
+        let globalInitError = null;
         let app, auth, db, appId;
 
         // Auto-detect environment
         if (typeof __firebase_config !== 'undefined') {
-            // We are in the Preview Environment
+            // Preview Environment
             firebaseConfig = JSON.parse(__firebase_config);
             appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-            apiKey = ""; // Handled by env
+            apiKey = ""; 
             useCloud = true;
         } else if (manualFirebaseConfig.apiKey !== "YOUR_FIREBASE_API_KEY") {
-            // We are in Production (GitHub Pages) and user provided keys
+            // Production (GitHub Pages) - User provided keys
             appId = "deca-public-app";
             useCloud = true;
         }
 
-        // Initialize Firebase only if configured
+        // Initialize Firebase
         if (useCloud) {
             try {
                 app = initializeApp(firebaseConfig);
@@ -94,7 +93,8 @@
                 db = getFirestore(app);
             } catch (e) {
                 console.error("Firebase Init Failed:", e);
-                useCloud = false; // Fallback to local
+                globalInitError = e.message;
+                useCloud = false;
             }
         }
 
@@ -185,7 +185,7 @@
 
         // --- HELPER COMPONENTS ---
 
-        function GeneratorTab({ clusters, selectedCluster, setSelectedCluster, examLength, setExamLength, onStartExam, questions, onAddQuestions, blueprints, storageMode }) {
+        function GeneratorTab({ clusters, selectedCluster, setSelectedCluster, examLength, setExamLength, onStartExam, questions, onAddQuestions, blueprints, storageMode, errorMsg }) {
             const [useAI, setUseAI] = useState(false);
             const [isGenerating, setIsGenerating] = useState(false);
             const [progress, setProgress] = useState("");
@@ -335,12 +335,20 @@
                                 {storageMode === 'cloud' ? "Cloud Connected" : "Offline Mode"}
                             </h3>
                             <div className="space-y-3 text-sm text-slate-600">
-                                <div className="flex justify-between p-2 bg-white rounded border border-slate-200"><span>Total Questions:</span> <span className="font-mono font-bold">{questions.length}</span></div>
+                                <div className="flex justify-between p-2 bg-white rounded border border-slate-200"><span>Total Questions in Cloud:</span> <span className="font-mono font-bold">{questions.length}</span></div>
                                 <div className="flex justify-between p-2 bg-white rounded border border-slate-200"><span>Selected Cluster:</span> <span className="font-bold text-blue-600">{selectedCluster}</span></div>
-                                <div className={`mt-4 p-3 border rounded text-xs flex items-start gap-2 ${storageMode === 'cloud' ? 'bg-blue-50 border-blue-100 text-blue-800' : 'bg-amber-50 border-amber-100 text-amber-800'}`}>
-                                    <Info size={14} className="flex-shrink-0 mt-0.5" />
-                                    <span>{storageMode === 'cloud' ? "Questions are saved to the cloud and shared." : "Questions are saved to your browser ONLY. Configure Firebase to share."}</span>
-                                </div>
+                                
+                                {errorMsg ? (
+                                    <div className="mt-4 p-3 border border-red-200 bg-red-50 rounded text-xs text-red-700">
+                                        <div className="font-bold flex items-center gap-2 mb-1"><TriangleAlert size={14}/> Connection Error</div>
+                                        {errorMsg}
+                                    </div>
+                                ) : (
+                                    <div className={`mt-4 p-3 border rounded text-xs flex items-start gap-2 ${storageMode === 'cloud' ? 'bg-blue-50 border-blue-100 text-blue-800' : 'bg-amber-50 border-amber-100 text-amber-800'}`}>
+                                        <Info size={14} className="flex-shrink-0 mt-0.5" />
+                                        <span>{storageMode === 'cloud' ? "Questions are saved to the cloud and shared." : "Questions are saved to your browser ONLY. Check your API keys."}</span>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -786,6 +794,7 @@
             const [questions, setQuestions] = useState([]); // From Firebase
             const [blueprints, setBlueprints] = useState(DEFAULT_BLUEPRINTS);
             const [storageMode, setStorageMode] = useState('local');
+            const [errorMsg, setErrorMsg] = useState(null);
             
             // State for Generator
             const [selectedCluster, setSelectedCluster] = useState("Finance");
@@ -800,7 +809,15 @@
             // 1. Initialize and Load Data
             useEffect(() => {
                 const init = async () => {
-                    if (useCloud && app) {
+                    if (useCloud) {
+                        // Check global init error from outside
+                        if (globalInitError) {
+                             setStorageMode('local');
+                             setErrorMsg(globalInitError);
+                             loadLocalQuestions();
+                             return;
+                        }
+                        
                         try {
                             await signInAnonymously(auth);
                             setStorageMode('cloud');
@@ -813,6 +830,7 @@
                         } catch (e) {
                             console.error("Cloud init failed, falling back to local:", e);
                             setStorageMode('local');
+                            setErrorMsg(e.message);
                             loadLocalQuestions();
                         }
                     } else {
@@ -935,6 +953,7 @@
                             onAddQuestions={handleAddQuestions}
                             blueprints={blueprints}
                             storageMode={storageMode}
+                            errorMsg={errorMsg}
                             onStartExam={(exam) => {
                                 setGeneratedExam(exam);
                                 setExamMode('taking');
