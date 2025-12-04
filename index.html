@@ -26,6 +26,7 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <style>
+        /* Custom scrollbar for cleaner look */
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: #f1f5f9; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
@@ -40,6 +41,7 @@
         import { createRoot } from 'react-dom/client';
         import { Save, Trash2, Plus, Play, FileText, Settings, BarChart3, Upload, Check, AlertCircle, X, Download, Sparkles, Loader2, Database, Info, Target, List, BookOpen, GraduationCap, Zap, ChevronRight, Search, Filter, FileUp, FileArchive, Eye, Grid, PieChart, FileJson, Cloud, CloudOff, HardDrive } from 'lucide-react';
         import { initializeApp } from "firebase/app";
+        // Removed signInWithCustomToken import as it is not used in static site
         import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
         import { getFirestore, collection, doc, addDoc, deleteDoc, onSnapshot, writeBatch } from "firebase/firestore";
 
@@ -135,17 +137,15 @@
 
         const INITIAL_QUESTIONS = [
             {
-                id: "q1",
                 cluster: "Finance",
                 category: "BL",
                 pi: "Describe the nature of legally binding contracts",
-                question: "Which of the following is a characteristic of a legally binding contract:",
-                options: ["The contract must be written and signed.", "One of the parties must be in agreement.", "The contract must include an expiration date.", "Something of value must be exchanged."],
-                answer: "D",
-                rationale: "Something of value must be exchanged (Consideration) for a contract to be legally binding."
+                question: "After being fired from his job, Jack wrote blog posts in which he criticized his former company and all of its employees. He made many negative comments, most of which were untrue. What tort is Jack committing?",
+                options: ["Defamation", "Invasion of privacy", "Battery", "Negligence"],
+                answer: "A",
+                rationale: "Defamation involves making false statements that harm an individual's or organization's reputation."
             },
             {
-                id: "q2",
                 cluster: "Business Admin Core",
                 category: "PD", 
                 pi: "PD:032 Describe techniques for obtaining work experience",
@@ -247,7 +247,6 @@
                                 const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
                                 const parsed = cleanAndParseJSON(text);
                                 const generated = parsed.map(q => ({
-                                    id: `gen-${cat}-${Date.now()}-${Math.random().toString(36).substr(2,5)}`,
                                     cluster: "AI Generated",
                                     category: cat,
                                     pi: "AI Generated based on Blueprint",
@@ -456,7 +455,6 @@
                             });
                             if (qText && answers.length >= 2) {
                                 newQuestions.push({
-                                    id: `imp-${Date.now()}-${Math.random().toString(36).substr(2,5)}`,
                                     cluster: "Imported",
                                     category: importCategory, 
                                     pi: "Imported from Blackboard/Zip",
@@ -487,7 +485,6 @@
                                     newQuestions.push(currentQ);
                                 }
                                 currentQ = {
-                                    id: `imp-${Date.now()}-${Math.random().toString(36).substr(2,5)}`,
                                     cluster: "Imported",
                                     category: importCategory,
                                     question: qStart ? qStart[2] : line,
@@ -573,7 +570,6 @@
                     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
                     const parsed = cleanAndParseJSON(text);
                     const generated = parsed.map(q => ({
-                        id: `gen-${Date.now()}-${Math.random().toString(36).substr(2,5)}`,
                         cluster: "AI Generated", category: aiCategory, pi: "Ad-hoc AI",
                         question: q.question, options: q.options, answer: q.answer, rationale: q.rationale || "No rationale provided."
                     }));
@@ -605,7 +601,7 @@
                         <div className="absolute inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
                             <div className="bg-white p-6 rounded-xl shadow-2xl max-w-md w-full border border-red-100">
                                 <h3 className="text-xl font-bold text-red-600 mb-2">Danger Zone</h3>
-                                <p className="text-slate-600 mb-4 text-sm">Type "DELETE" to confirm clearing {questions.length} questions.</p>
+                                <p className="text-slate-600 mb-4 text-sm">Type "DELETE" to confirm clearing {questions.length} questions from the cloud database.</p>
                                 <input type="text" value={deleteConfirmText} onChange={(e) => setDeleteConfirmText(e.target.value)} className="w-full p-2 border mb-4"/>
                                 <div className="flex gap-2">
                                     <button onClick={() => setShowDeleteConfirm(false)} className="flex-1 py-2 border rounded">Cancel</button>
@@ -785,8 +781,9 @@
         // --- MAIN APP ---
 
         function DECATestGenerator() {
-            const [activeTab, setActiveTab] = useState('blueprints');
-            const [questions, setQuestions] = useState([]); 
+            const [activeTab, setActiveTab] = useState('generate'); // Changed default to 'generate'
+            const [user, setUser] = useState(null);
+            const [questions, setQuestions] = useState([]); // From Firebase
             const [blueprints, setBlueprints] = useState(DEFAULT_BLUEPRINTS);
             const [storageMode, setStorageMode] = useState('local');
             
@@ -831,7 +828,7 @@
                 if (localData) setQuestions(JSON.parse(localData));
             };
 
-            // 3. Local Storage for Blueprints
+            // 3. Local Storage for Blueprints (Personal Preference)
             useEffect(() => {
                 const savedBlueprints = localStorage.getItem('deca_blueprints');
                 if (savedBlueprints) setBlueprints(JSON.parse(savedBlueprints));
@@ -853,17 +850,31 @@
             const handleAddQuestions = async (newQuestions) => {
                 if (storageMode === 'cloud') {
                     const qRef = collection(db, 'artifacts', appId, 'public', 'data', 'questions');
+                    
+                    // Batch writes (limit 500 per batch)
                     const batchSize = 450; 
                     for (let i = 0; i < newQuestions.length; i += batchSize) {
                         const chunk = newQuestions.slice(i, i + batchSize);
                         const batch = writeBatch(db);
                         chunk.forEach(q => {
-                            const newDocRef = doc(qRef); 
+                            const newDocRef = doc(qRef); // Auto ID
+                            // Remove temporary local ID if exists to avoid confusion
                             const { id, ...qData } = q; 
-                            const cleanData = {};
-                            Object.keys(qData).forEach(key => {
-                                cleanData[key] = qData[key] === undefined ? "N/A" : qData[key];
-                            });
+                            
+                            // Aggressive Sanitization
+                            const cleanData = {
+                                cluster: qData.cluster ?? "Uncategorized",
+                                category: qData.category ?? "SM",
+                                pi: qData.pi ?? "General",
+                                question: qData.question ?? "Empty Question",
+                                options: Array.isArray(qData.options) ? qData.options : ["A","B","C","D"],
+                                answer: qData.answer ?? "A",
+                                rationale: qData.rationale ?? "No rationale."
+                            };
+                            
+                            // Ensure no undefineds slip through in options
+                            cleanData.options = cleanData.options.map(o => o ?? "");
+
                             batch.set(newDocRef, cleanData);
                         });
                         await batch.commit();
@@ -886,6 +897,8 @@
             const handleDeleteAll = async () => {
                 if (storageMode === 'cloud') {
                     const qRef = collection(db, 'artifacts', appId, 'public', 'data', 'questions');
+                    // Need to fetch all IDs first to delete
+                    // Since we have them in state 'questions', use that
                     const batchSize = 450;
                     for (let i = 0; i < questions.length; i += batchSize) {
                         const chunk = questions.slice(i, i + batchSize);
