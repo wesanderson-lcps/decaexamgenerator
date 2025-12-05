@@ -39,7 +39,7 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect, useRef, useMemo } from 'react';
         import { createRoot } from 'react-dom/client';
-        import { Save, Trash2, Plus, Play, FileText, Settings, BarChart3, Upload, Check, AlertCircle, X, Download, Sparkles, Loader2, Database, Info, Target, List, BookOpen, GraduationCap, Zap, ChevronRight, Search, Filter, FileUp, FileArchive, Eye, Grid, PieChart, FileJson, Cloud, CloudOff, HardDrive, TriangleAlert } from 'lucide-react';
+        import { Save, Trash2, Plus, Play, FileText, Settings, BarChart3, Upload, Check, AlertCircle, X, Download, Sparkles, Loader2, Database, Info, Target, List, BookOpen, GraduationCap, Zap, ChevronRight, Search, Filter, FileUp, FileArchive, Eye, Grid, PieChart, FileJson, Cloud, CloudOff, HardDrive, AlertTriangle } from 'lucide-react';
         import { initializeApp } from "firebase/app";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
         import { getFirestore, collection, doc, addDoc, deleteDoc, onSnapshot, writeBatch } from "firebase/firestore";
@@ -340,7 +340,7 @@
                                 
                                 {errorMsg ? (
                                     <div className="mt-4 p-3 border border-red-200 bg-red-50 rounded text-xs text-red-700">
-                                        <div className="font-bold flex items-center gap-2 mb-1"><TriangleAlert size={14}/> Connection Error</div>
+                                        <div className="font-bold flex items-center gap-2 mb-1"><AlertTriangle size={14}/> Connection Error</div>
                                         {errorMsg}
                                     </div>
                                 ) : (
