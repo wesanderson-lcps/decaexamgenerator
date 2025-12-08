@@ -5,10 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DECA Practice Test Generator</title>
     
-    <!-- 1. Tailwind CSS -->
+    <!-- 1. Suppress Warning -->
+    <script>
+        const originalWarn = console.warn;
+        console.warn = function(...args) {
+            if (args[0] && typeof args[0] === 'string' && args[0].includes('cdn.tailwindcss.com')) return;
+            originalWarn.apply(console, args);
+        };
+    </script>
+
+    <!-- 2. Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- 2. Import Map -->
+    <!-- 3. Import Map -->
     <script type="importmap">
         {
             "imports": {
@@ -22,12 +31,12 @@
         }
     </script>
     
-    <!-- 3. Babel -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-    <!-- 4. Global PDF Libraries -->
+    <!-- 4. PDF Libraries (Loaded Globally to avoid ESM issues) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    
+    <!-- 5. Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <style>
         ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -42,18 +51,17 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect, useRef, useMemo } from 'react';
         import { createRoot } from 'react-dom/client';
-        // Fixed: Changed TriangleAlert to AlertTriangle
-        import { Save, Trash2, Plus, Play, FileText, Settings, BarChart3, Upload, Check, AlertCircle, X, Download, Sparkles, Loader2, Database, Info, Target, List, BookOpen, GraduationCap, Zap, ChevronRight, Search, Filter, FileUp, FileArchive, Eye, Grid, PieChart, FileJson, Cloud, CloudOff, HardDrive, AlertTriangle, Lock, Flag, LogOut, LayoutGrid, Edit, XCircle } from 'lucide-react';
+        import { Save, Trash2, Plus, Play, FileText, Settings, BarChart3, Upload, Check, AlertCircle, X, Download, Sparkles, Loader2, Database, Info, Target, List, BookOpen, GraduationCap, Zap, ChevronRight, Search, Filter, FileUp, FileArchive, Eye, Grid, PieChart, FileJson, Cloud, CloudOff, HardDrive, TriangleAlert, Lock, Flag, LogOut, LayoutGrid } from 'lucide-react';
         import { initializeApp } from "firebase/app";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
-        import { getFirestore, collection, doc, addDoc, deleteDoc, updateDoc, onSnapshot, writeBatch, orderBy, query } from "firebase/firestore";
+        import { getFirestore, collection, doc, addDoc, deleteDoc, onSnapshot, writeBatch } from "firebase/firestore";
 
         // ------------------------------------------------------------------
         // CONFIGURATION
         // ------------------------------------------------------------------
         
         const manualFirebaseConfig = {
-            apiKey: "AIzaSyBjAuXLXvPOYyCrWe8oplahBWMsnASi6Qo",
+              apiKey: "AIzaSyBjAuXLXvPOYyCrWe8oplahBWMsnASi6Qo",
             authDomain: "aidecaexams.firebaseapp.com",
             projectId: "aidecaexams",
             storageBucket: "aidecaexams.firebasestorage.app",
@@ -122,12 +130,13 @@
             RM: "Risk Management",
             SE: "Selling",
             SM: "Strategic Management",
-            PF_EI: "Earning Income (PFL)",
-            PF_SP: "Spending (PFL)",
-            PF_SA: "Saving (PFL)",
-            PF_IN: "Investing (PFL)",
-            PF_CR: "Managing Credit (PFL)",
-            PF_MR: "Managing Risk (PFL)"
+            // PFL Categories (Prefixed to avoid collision)
+            PF_EI: "Earning Income",
+            PF_SP: "Spending",
+            PF_SA: "Saving",
+            PF_IN: "Investing",
+            PF_CR: "Managing Credit",
+            PF_MR: "Managing Risk"
         };
 
         const DEFAULT_BLUEPRINTS = {
@@ -137,7 +146,7 @@
             "Marketing": { BL: 1, CM: 8, CO: 8, EC: 5, EI: 8, FI: 5, IM: 8, MP: 8, NF: 11, OP: 6, PI: 3, PM: 11, PD: 6, PR: 9, SE: 6, SM: 1 },
             "Hospitality": { BL: 2, CO: 8, CR: 10, EC: 5, EI: 8, FI: 5, HR: 5, IM: 8, OP: 10, PD: 5, PM: 5, SE: 5 },
             "Business Management": { BL: 4, CO: 10, CR: 5, EC: 5, EI: 10, FI: 5, HR: 8, IM: 8, OP: 8, PD: 8, PJ: 5, SM: 5 },
-            "Personal Financial Literacy": { PF_EI: 15, PF_SP: 15, PF_SA: 15, PF_IN: 20, PF_CR: 15, PF_MR: 20 }
+            "Personal Financial Literacy": { PF_EI: 15, PF_SP: 15, PF_SA: 15, PF_IN: 20, PF_CR: 15, PF_MR: 20 } 
         };
 
         const INITIAL_QUESTIONS = [
@@ -218,7 +227,7 @@
             };
 
             const downloadPDF = () => {
-                // Correctly access jsPDF from window
+                // Use global jsPDF from script tag
                 const { jsPDF } = window.jspdf;
                 const doc = new jsPDF();
                 
@@ -259,6 +268,7 @@
                 doc.save(`${studentName.replace(/\s+/g,'_')}_deca_results.pdf`);
             };
 
+            // Calculate Score & Save on Finish
             const handleSubmit = () => {
                 const score = Math.round((exam.filter((q, i) => userAnswers[i] === q.answer).length / exam.length) * 100);
                 onSaveSubmission({
@@ -267,7 +277,7 @@
                     date: new Date().toISOString(),
                     totalQuestions: exam.length,
                     correctCount: exam.filter((q, i) => userAnswers[i] === q.answer).length,
-                    cluster: exam[0].cluster || "Mixed"
+                    cluster: exam[0].cluster || "Mixed" // Handle potential mixed clusters
                 });
                 setMode('results');
             };
@@ -327,7 +337,7 @@
 
             return (
                 <div className="h-full flex flex-col max-w-5xl mx-auto w-full">
-                    {/* Fixed Height Header */}
+                    {/* Standardized Header - Fixed Height */}
                     <div className="h-20 p-4 border-b flex justify-between items-center bg-white flex-shrink-0">
                         <div>
                             <span className="font-bold text-slate-700 text-lg">Question {currentIndex + 1} of {exam.length}</span>
@@ -345,7 +355,7 @@
                         </div>
                     </div>
 
-                    {/* Scrolling Content Area */}
+                    {/* Standardized Content Area - Grows but pushes footer down */}
                     <div className="flex-1 p-8 overflow-y-auto bg-slate-50">
                         <div className="max-w-3xl mx-auto">
                             <p className="text-xl mb-8 leading-relaxed font-medium text-slate-800 min-h-[80px]">{currentQ.question}</p>
@@ -396,7 +406,7 @@
                         </div>
                     </div>
 
-                    {/* Fixed Height Footer */}
+                    {/* Standardized Footer - Fixed Height */}
                     <div className="h-20 p-4 border-t bg-white flex justify-between items-center flex-shrink-0">
                         <button 
                             onClick={() => setCurrentIndex(c => Math.max(0, c-1))} 
@@ -1127,6 +1137,58 @@
                             )}
                         </div>
                     )}
+                </div>
+            );
+        }
+
+        // --- ADMIN DASHBOARD ---
+        function AdminDashboard({ submissions }) {
+            const [filterDate, setFilterDate] = useState('all');
+
+            const filteredSubs = submissions.filter(sub => {
+                if (filterDate === 'today') {
+                    return new Date(sub.date).toDateString() === new Date().toDateString();
+                }
+                return true;
+            }).sort((a,b) => new Date(b.date) - new Date(a.date));
+
+            return (
+                <div className="p-8 h-full flex flex-col">
+                    <h2 className="text-2xl font-bold mb-6 text-slate-800 flex items-center gap-2"><Lock className="text-red-600" size={24}/> Admin Portal</h2>
+                    
+                    <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm mb-6 flex-1 overflow-auto">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="font-bold text-lg">Student Submissions</h3>
+                            <select value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="p-2 border rounded">
+                                <option value="all">All Time</option>
+                                <option value="today">Today Only</option>
+                            </select>
+                        </div>
+                        
+                        <table className="w-full text-left">
+                            <thead className="bg-slate-50 text-sm font-bold text-slate-600 border-b">
+                                <tr>
+                                    <th className="p-3">Date</th>
+                                    <th className="p-3">Student Name</th>
+                                    <th className="p-3">Cluster</th>
+                                    <th className="p-3">Score</th>
+                                    <th className="p-3">Details</th>
+                                </tr>
+                            </thead>
+                            <tbody className="text-sm">
+                                {filteredSubs.length === 0 ? <tr><td colSpan="5" className="p-6 text-center text-slate-400">No submissions found.</td></tr> : 
+                                 filteredSubs.map((sub, i) => (
+                                    <tr key={i} className="border-b hover:bg-slate-50">
+                                        <td className="p-3">{new Date(sub.date).toLocaleString()}</td>
+                                        <td className="p-3 font-medium text-slate-800">{sub.studentName}</td>
+                                        <td className="p-3">{sub.cluster}</td>
+                                        <td className="p-3 font-bold text-blue-600">{sub.score}%</td>
+                                        <td className="p-3 text-slate-500">{sub.correctCount}/{sub.totalQuestions}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             );
         }
