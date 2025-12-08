@@ -49,12 +49,10 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect, useRef, useMemo } from 'react';
         import { createRoot } from 'react-dom/client';
-        // Fixed: Changed TriangleAlert to AlertTriangle
-        import { Save, Trash2, Plus, Play, FileText, Settings, BarChart3, Upload, Check, AlertCircle, X, Download, Sparkles, Loader2, Database, Info, Target, List, BookOpen, GraduationCap, Zap, ChevronRight, Search, Filter, FileUp, FileArchive, Eye, Grid, PieChart, FileJson, Cloud, CloudOff, HardDrive, AlertTriangle } from 'lucide-react';
+        import { Save, Trash2, Plus, Play, FileText, Settings, BarChart3, Upload, Check, AlertCircle, X, Download, Sparkles, Loader2, Database, Info, Target, List, BookOpen, GraduationCap, Zap, ChevronRight, Search, Filter, FileUp, FileArchive, Eye, Grid, PieChart, FileJson, Cloud, CloudOff, HardDrive, TriangleAlert, Flag, User, Lock, LogOut } from 'lucide-react';
         import { initializeApp } from "firebase/app";
-        // Fixed: Added signInWithCustomToken to imports
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "firebase/auth";
-        import { getFirestore, collection, doc, addDoc, deleteDoc, onSnapshot, writeBatch } from "firebase/firestore";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
+        import { getFirestore, collection, doc, addDoc, deleteDoc, onSnapshot, writeBatch, query, orderBy, getDocs } from "firebase/firestore";
         import jsPDF from 'jspdf';
         import autoTable from 'jspdf-autotable';
 
@@ -106,7 +104,7 @@
             }
         }
 
-        // --- CONSTANTS ---
+        // --- DATA CONSTANTS ---
         const INSTRUCTIONAL_AREAS = {
             BL: "Business Law",
             CM: "Channel Management",
@@ -132,6 +130,13 @@
             RM: "Risk Management",
             SE: "Selling",
             SM: "Strategic Management",
+            // PFL Categories
+            PF_EI: "Earning Income",
+            PF_SP: "Spending",
+            PF_SA: "Saving",
+            PF_IN: "Investing",
+            PF_CR: "Managing Credit",
+            PF_MR: "Managing Risk"
         };
 
         const DEFAULT_BLUEPRINTS = {
@@ -140,7 +145,8 @@
             "Business Admin Core": { BL: 1, CO: 15, CR: 5, EC: 7, EI: 14, EN: 1, FI: 2, HR: 0, IM: 13, MK: 1, OP: 2, PD: 5 },
             "Marketing": { BL: 1, CM: 8, CO: 8, EC: 5, EI: 8, FI: 5, IM: 8, MP: 8, NF: 11, OP: 6, PI: 3, PM: 11, PD: 6, PR: 9, SE: 6, SM: 1 },
             "Hospitality": { BL: 2, CO: 8, CR: 10, EC: 5, EI: 8, FI: 5, HR: 5, IM: 8, OP: 10, PD: 5, PM: 5, SE: 5 },
-            "Business Management": { BL: 4, CO: 10, CR: 5, EC: 5, EI: 10, FI: 5, HR: 8, IM: 8, OP: 8, PD: 8, PJ: 5, SM: 5 }
+            "Business Management": { BL: 4, CO: 10, CR: 5, EC: 5, EI: 10, FI: 5, HR: 8, IM: 8, OP: 8, PD: 8, PJ: 5, SM: 5 },
+            "Personal Financial Literacy": { PF_EI: 15, PF_SP: 15, PF_SA: 15, PF_IN: 20, PF_CR: 15, PF_MR: 20 } 
         };
 
         const INITIAL_QUESTIONS = [
@@ -183,19 +189,27 @@
             }
         };
 
-        // --- COMPONENTS ---
+        // --- HELPER COMPONENTS ---
 
-        function ExamSession({ exam, mode, setMode, userAnswers, setUserAnswers, currentIndex, setCurrentIndex, onExit }) {
+        function ExamSession({ exam, mode, setMode, userAnswers, setUserAnswers, currentIndex, setCurrentIndex, onExit, onSaveSubmission, studentName }) {
             const currentQ = exam[currentIndex];
-            const isLast = currentIndex === exam.length - 1;
             const [explanation, setExplanation] = useState(null);
             const [isExplaining, setIsExplaining] = useState(false);
+            const [flagged, setFlagged] = useState(new Set());
+            const [showReview, setShowReview] = useState(false);
 
             useEffect(() => { setExplanation(null); }, [currentIndex]);
 
             const handleAnswer = (optIndex) => {
                 if (mode === 'review') return;
                 setUserAnswers(prev => ({ ...prev, [currentIndex]: ['A','B','C','D'][optIndex] }));
+            };
+
+            const toggleFlag = () => {
+                const newFlags = new Set(flagged);
+                if (newFlags.has(currentIndex)) newFlags.delete(currentIndex);
+                else newFlags.add(currentIndex);
+                setFlagged(newFlags);
             };
 
             const explainConcept = async () => {
@@ -220,8 +234,8 @@
                 doc.text("DECA Practice Test Results", 14, 20);
                 
                 doc.setFontSize(12);
-                doc.text(`Final Score: ${score}%`, 14, 30);
-                doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, 36);
+                doc.text(`Student: ${studentName}`, 14, 30);
+                doc.text(`Score: ${score}%`, 14, 36);
                 
                 const tableData = exam.map((q, i) => {
                     const userAnswer = userAnswers[i] || "Skipped";
@@ -240,20 +254,34 @@
                     startY: 45,
                     head: [['#', 'Status', 'Cat', 'Question', 'Answer', 'Rationale']],
                     body: tableData,
-                    columnStyles: {
-                        1: { fontStyle: 'bold' },
-                        5: { cellWidth: 50 }
-                    },
+                    columnStyles: { 1: { fontStyle: 'bold' }, 5: { cellWidth: 50 } },
                     didParseCell: (data) => {
-                        if (data.column.index === 1 && data.cell.raw === "Incorrect") {
-                            data.cell.styles.textColor = [220, 53, 69]; // Red
-                        } else if (data.column.index === 1 && data.cell.raw === "Correct") {
-                            data.cell.styles.textColor = [25, 135, 84]; // Green
-                        }
+                        if (data.column.index === 1 && data.cell.raw === "Incorrect") data.cell.styles.textColor = [220, 53, 69];
+                        else if (data.column.index === 1 && data.cell.raw === "Correct") data.cell.styles.textColor = [25, 135, 84];
                     }
                 });
 
-                doc.save("deca_exam_results.pdf");
+                doc.save(`${studentName.replace(/\s+/g,'_')}_deca_results.pdf`);
+            };
+
+            // Calculate Score & Save on Finish
+            const handleSubmit = () => {
+                const score = Math.round((exam.filter((q, i) => userAnswers[i] === q.answer).length / exam.length) * 100);
+                onSaveSubmission({
+                    studentName,
+                    score,
+                    date: new Date().toISOString(),
+                    totalQuestions: exam.length,
+                    correctCount: exam.filter((q, i) => userAnswers[i] === q.answer).length,
+                    cluster: exam[0].cluster // Assuming homogeneous exam
+                });
+                setMode('results');
+            };
+
+            const handleCancel = () => {
+                if (window.confirm("Are you sure you want to cancel this session? All progress will be lost.")) {
+                    onExit();
+                }
             };
 
             if (mode === 'results') {
@@ -261,6 +289,7 @@
                 return (
                     <div className="p-8 text-center flex flex-col items-center justify-center h-full">
                         <div className="text-6xl font-bold text-blue-600 mb-4">{score}%</div>
+                        <h2 className="text-2xl font-bold mb-6">Great Job, {studentName}!</h2>
                         <div className="flex gap-4 flex-wrap justify-center">
                             <button onClick={() => { setMode('review'); setCurrentIndex(0); }} className="px-6 py-2 border rounded hover:bg-slate-50">Review Answers</button>
                             <button onClick={downloadPDF} className="px-6 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 flex items-center gap-2"><Download size={18}/> Download PDF</button>
@@ -270,46 +299,129 @@
                 );
             }
 
-            return (
-                <div className="h-full flex flex-col">
-                    <div className="p-4 border-b flex justify-between items-center bg-slate-50">
-                        <span className="font-bold text-slate-700">Question {currentIndex + 1} of {exam.length}</span>
-                        <span className="text-xs font-mono bg-white px-2 py-1 rounded border">{currentQ.category}</span>
-                    </div>
-                    <div className="flex-1 p-8 overflow-auto">
-                        <p className="text-lg mb-6">{currentQ.question}</p>
-                        <div className="space-y-3">
-                            {currentQ.options.map((opt, idx) => {
-                                const letter = ['A','B','C','D'][idx];
-                                const isSel = userAnswers[currentIndex] === letter;
-                                const isCor = currentQ.answer === letter;
-                                let cls = "w-full text-left p-4 rounded border flex gap-3 transition-colors ";
-                                if (mode === 'review') {
-                                    if (isCor) cls += "bg-green-100 border-green-500 text-green-900";
-                                    else if (isSel) cls += "bg-red-50 border-red-300";
-                                    else cls += "opacity-50";
-                                } else {
-                                    cls += isSel ? "bg-blue-50 border-blue-500" : "hover:bg-slate-50";
-                                }
-                                return <button key={idx} onClick={() => mode !== 'review' && setUserAnswers(prev => ({...prev, [currentIndex]: letter}))} className={cls}><span className="font-bold">{letter}</span>{opt}</button>;
+            if (showReview) {
+                return (
+                    <div className="h-full flex flex-col p-8">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-2xl font-bold">Review Before Submitting</h2>
+                            <button onClick={() => setShowReview(false)} className="px-4 py-2 border rounded">Back to Exam</button>
+                        </div>
+                        <div className="flex-1 overflow-auto grid grid-cols-5 md:grid-cols-10 gap-3 content-start">
+                            {exam.map((q, i) => {
+                                const answered = userAnswers[i] !== undefined;
+                                const isFlagged = flagged.has(i);
+                                let bg = answered ? 'bg-blue-100 border-blue-300' : 'bg-slate-100 border-slate-300';
+                                if (isFlagged) bg = 'bg-amber-100 border-amber-300 ring-2 ring-amber-400';
+                                return (
+                                    <button 
+                                        key={i} 
+                                        onClick={() => { setCurrentIndex(i); setShowReview(false); }}
+                                        className={`p-3 rounded border text-sm font-bold ${bg} relative`}
+                                    >
+                                        {i + 1}
+                                        {isFlagged && <Flag size={10} className="absolute top-1 right-1 text-amber-600 fill-amber-600"/>}
+                                    </button>
+                                )
                             })}
                         </div>
-                        {mode === 'review' && (
-                            <div className="mt-6 p-4 bg-slate-100 rounded border border-slate-200">
-                                <p className="text-sm text-slate-700 mb-2"><strong>Rationale:</strong> {currentQ.rationale}</p>
-                                {!explanation ? (
-                                    <button onClick={explainConcept} disabled={isExplaining} className="text-xs text-purple-600 font-bold flex items-center gap-1 hover:underline">
-                                        {isExplaining ? <Loader2 size={12} className="animate-spin"/> : <Sparkles size={12}/>} Deep Dive Explanation
-                                    </button>
-                                ) : <div className="mt-2 text-sm text-purple-800 bg-purple-50 p-3 rounded">{explanation}</div>}
-                            </div>
-                        )}
+                        <div className="mt-6 border-t pt-4 flex justify-end">
+                            <button onClick={handleSubmit} className="px-8 py-3 bg-green-600 text-white font-bold rounded shadow-lg hover:bg-green-700">Submit Final Exam</button>
+                        </div>
                     </div>
-                    <div className="p-4 border-t flex justify-between">
-                        <button onClick={() => setCurrentIndex(c => Math.max(0, c-1))} disabled={currentIndex===0} className="px-4 py-2 rounded border hover:bg-slate-50 disabled:opacity-50">Previous</button>
-                        <button onClick={() => isLast ? (mode==='taking' ? setMode('results') : onExit()) : setCurrentIndex(c => c+1)} className="px-6 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-700">
-                            {isLast ? (mode==='taking' ? 'Submit' : 'Exit') : 'Next'}
+                );
+            }
+
+            return (
+                <div className="h-full flex flex-col max-w-5xl mx-auto w-full">
+                    {/* Standardized Header - Fixed Height */}
+                    <div className="h-20 p-4 border-b flex justify-between items-center bg-white flex-shrink-0">
+                        <div>
+                            <span className="font-bold text-slate-700 text-lg">Question {currentIndex + 1} of {exam.length}</span>
+                            <div className="text-xs text-slate-500 mt-1">{currentQ.category}</div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <button 
+                                onClick={toggleFlag} 
+                                className={`p-2 rounded border transition-colors ${flagged.has(currentIndex) ? 'bg-amber-100 border-amber-300 text-amber-700' : 'bg-white border-slate-200 text-slate-400'}`}
+                                title="Flag for Review"
+                            >
+                                <Flag size={20} className={flagged.has(currentIndex) ? 'fill-amber-600' : ''}/>
+                            </button>
+                            <button onClick={handleCancel} className="text-red-500 hover:bg-red-50 p-2 rounded"><X size={24}/></button>
+                        </div>
+                    </div>
+
+                    {/* Standardized Content Area - Grows but pushes footer down */}
+                    <div className="flex-1 p-8 overflow-y-auto bg-slate-50">
+                        <div className="max-w-3xl mx-auto">
+                            <p className="text-xl mb-8 leading-relaxed font-medium text-slate-800 min-h-[80px]">{currentQ.question}</p>
+                            
+                            <div className="space-y-4">
+                                {currentQ.options.map((opt, idx) => {
+                                    const letter = ['A','B','C','D'][idx];
+                                    const isSel = userAnswers[currentIndex] === letter;
+                                    const isCor = currentQ.answer === letter;
+                                    let cls = "w-full text-left p-5 rounded-lg border-2 flex gap-4 transition-all items-center group ";
+                                    
+                                    if (mode === 'review') {
+                                        if (isCor) cls += "bg-green-50 border-green-500 text-green-900";
+                                        else if (isSel) cls += "bg-red-50 border-red-300";
+                                        else cls += "border-slate-200 opacity-60";
+                                    } else {
+                                        cls += isSel ? "bg-blue-50 border-blue-600 shadow-sm" : "bg-white border-slate-200 hover:border-blue-300 hover:bg-blue-50/50";
+                                    }
+
+                                    return (
+                                        <button key={idx} onClick={() => mode !== 'review' && setUserAnswers(prev => ({...prev, [currentIndex]: letter}))} className={cls}>
+                                            <span className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-bold border ${isSel || (mode === 'review' && isCor) ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-100 text-slate-500 border-slate-300 group-hover:border-blue-400'}`}>
+                                                {letter}
+                                            </span>
+                                            <span className="text-base">{opt}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {mode === 'review' && (
+                                <div className="mt-8 p-6 bg-white rounded-xl border border-slate-200 shadow-sm animate-in fade-in slide-in-from-bottom-4">
+                                    <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-2"><Info size={18}/> Rationale</h4>
+                                    <p className="text-slate-600 leading-relaxed">{currentQ.rationale}</p>
+                                    {!explanation ? (
+                                        <button onClick={explainConcept} disabled={isExplaining} className="mt-4 text-purple-600 font-bold flex items-center gap-2 hover:bg-purple-50 px-4 py-2 rounded transition-colors text-sm border border-purple-200 w-full justify-center">
+                                            {isExplaining ? <Loader2 size={16} className="animate-spin"/> : <Sparkles size={16}/>} 
+                                            {isExplaining ? "AI Tutor is thinking..." : "Ask AI for a Simple Explanation"}
+                                        </button>
+                                    ) : (
+                                        <div className="mt-4 text-sm text-purple-900 bg-purple-50 p-4 rounded-lg border border-purple-100 flex gap-3">
+                                            <GraduationCap size={20} className="flex-shrink-0 mt-0.5 text-purple-600"/>
+                                            <div>{explanation}</div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Standardized Footer - Fixed Height */}
+                    <div className="h-20 p-4 border-t bg-white flex justify-between items-center flex-shrink-0">
+                        <button 
+                            onClick={() => setCurrentIndex(c => Math.max(0, c-1))} 
+                            disabled={currentIndex===0} 
+                            className="px-6 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 disabled:opacity-50 font-medium"
+                        >
+                            Previous
                         </button>
+                        
+                        {mode === 'taking' ? (
+                            <button 
+                                onClick={() => currentIndex === exam.length - 1 ? setShowReview(true) : setCurrentIndex(c => c+1)} 
+                                className="px-8 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 shadow-md transition-transform active:scale-95"
+                            >
+                                {currentIndex === exam.length - 1 ? 'Review & Submit' : 'Next Question'}
+                            </button>
+                        ) : (
+                             <button onClick={onExit} className="px-8 py-2 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-900">Finish Review</button>
+                        )}
                     </div>
                 </div>
             );
@@ -319,8 +431,14 @@
             const [useAI, setUseAI] = useState(false);
             const [isGenerating, setIsGenerating] = useState(false);
             const [progress, setProgress] = useState("");
+            const [studentName, setStudentName] = useState("");
 
             const handleGenerate = async () => {
+                if (!studentName.trim()) {
+                    alert("Please enter your name to start the exam.");
+                    return;
+                }
+
                 setIsGenerating(true);
                 const blueprint = blueprints[selectedCluster];
                 if (!blueprint) return;
@@ -332,7 +450,7 @@
                 const poolByCategory = {};
                 
                 questions.forEach(q => {
-                    if (q.cluster === selectedCluster || q.cluster === "Business Admin Core" || q.cluster === "AI Generated" || q.cluster === "Imported") {
+                    if (q.cluster === selectedCluster || q.cluster === "Business Admin Core" || q.cluster === "AI Generated" || q.cluster === "Imported" || selectedCluster === "Personal Financial Literacy") {
                         if (!poolByCategory[q.category]) poolByCategory[q.category] = [];
                         poolByCategory[q.category].push(q);
                     }
@@ -409,7 +527,7 @@
                 }
 
                 setIsGenerating(false);
-                onStartExam(finalExam);
+                onStartExam(finalExam, studentName);
             };
 
             const createPlaceholder = (cat, cluster, i) => ({
@@ -428,6 +546,17 @@
                     <h2 className="text-2xl font-bold mb-6 text-slate-800">Generate Practice Exam</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="space-y-6">
+                             <div>
+                                <label className="block text-sm font-medium text-slate-600 mb-2">Student Name</label>
+                                <input 
+                                    type="text" 
+                                    value={studentName} 
+                                    onChange={(e) => setStudentName(e.target.value)} 
+                                    className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                    placeholder="Enter your full name"
+                                />
+                            </div>
+
                             <div>
                                 <label className="block text-sm font-medium text-slate-600 mb-2">Select Cluster</label>
                                 <select value={selectedCluster} onChange={(e) => setSelectedCluster(e.target.value)} className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
@@ -444,15 +573,21 @@
                                     ))}
                                 </div>
                             </div>
+                            
                             <div className="p-4 bg-purple-50 border border-purple-100 rounded-xl">
                                 <div className="flex items-center gap-3 mb-2">
                                     <input type="checkbox" id="useAI" checked={useAI} onChange={(e) => setUseAI(e.target.checked)} className="w-5 h-5 text-purple-600 rounded focus:ring-purple-500" />
                                     <label htmlFor="useAI" className="font-bold text-purple-900 cursor-pointer flex items-center gap-2"><Sparkles size={18}/> Magic AI Fill</label>
                                 </div>
-                                <p className="text-xs text-purple-700 ml-8">If checked, Gemini AI will automatically generate new questions to fill gaps. Questions will be saved to the bank.</p>
+                                <p className="text-xs text-purple-700 ml-8">If checked, Gemini AI will automatically generate new questions to fill gaps in the selected cluster.</p>
                             </div>
+
                             <div className="pt-4">
-                                <button onClick={handleGenerate} disabled={isGenerating} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-lg shadow-lg flex items-center justify-center gap-2 disabled:opacity-70">
+                                <button 
+                                    onClick={handleGenerate} 
+                                    disabled={isGenerating || !studentName.trim()}
+                                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-lg shadow-lg flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                                >
                                     {isGenerating ? <Loader2 className="animate-spin" /> : <Play size={20} />} 
                                     {isGenerating ? "Building Exam..." : "Start Exam"}
                                 </button>
@@ -465,18 +600,18 @@
                                 {storageMode === 'cloud' ? "Cloud Connected" : "Offline Mode"}
                             </h3>
                             <div className="space-y-3 text-sm text-slate-600">
-                                <div className="flex justify-between p-2 bg-white rounded border border-slate-200"><span>Total Questions in Cloud:</span> <span className="font-mono font-bold">{questions.length}</span></div>
-                                <div className="flex justify-between p-2 bg-white rounded border border-slate-200"><span>Selected Cluster:</span> <span className="font-bold text-blue-600">{selectedCluster}</span></div>
+                                <div className="flex justify-between p-2 bg-white rounded border border-slate-200"><span>Total Questions:</span> <span className="font-mono font-bold">{questions.length}</span></div>
+                                <div className="flex justify-between p-2 bg-white rounded border border-slate-200"><span>Cluster:</span> <span className="font-bold text-blue-600 truncate max-w-[150px]">{selectedCluster}</span></div>
                                 
                                 {errorMsg ? (
                                     <div className="mt-4 p-3 border border-red-200 bg-red-50 rounded text-xs text-red-700">
-                                        <div className="font-bold flex items-center gap-2 mb-1"><AlertTriangle size={14}/> Connection Error</div>
+                                        <div className="font-bold flex items-center gap-2 mb-1"><TriangleAlert size={14}/> Connection Error</div>
                                         {errorMsg}
                                     </div>
                                 ) : (
                                     <div className={`mt-4 p-3 border rounded text-xs flex items-start gap-2 ${storageMode === 'cloud' ? 'bg-blue-50 border-blue-100 text-blue-800' : 'bg-amber-50 border-amber-100 text-amber-800'}`}>
                                         <Info size={14} className="flex-shrink-0 mt-0.5" />
-                                        <span>{storageMode === 'cloud' ? "Questions are saved to the cloud and shared." : "Questions are saved to your browser ONLY. Configure Firebase to share."}</span>
+                                        <span>{storageMode === 'cloud' ? "Connected to Cloud." : "Questions saved locally."}</span>
                                     </div>
                                 )}
                             </div>
@@ -517,7 +652,7 @@
             );
         }
 
-        function QuestionBankTab({ questions, onAddQuestions, onDeleteQuestion, onDeleteAll }) {
+        function QuestionBankTab({ questions, onAddQuestions, onDeleteQuestion, onDeleteAll, isAdmin }) {
             const [mode, setMode] = useState('list'); 
             const [viewFormat, setViewFormat] = useState('list');
             const [importText, setImportText] = useState("");
@@ -609,67 +744,39 @@
                             if (Array.isArray(jsonData)) newQuestions.push(...jsonData);
                         } catch(e) { console.error("Not a valid JSON backup"); }
                     } else {
-                        // NEW LOGIC FOR "DECA BLOCK" FORMAT (No Numbers needed)
                         const lines = text.split('\n');
                         let currentQ = {};
-                        let state = 'start'; // start, q, opt
-                        
+                        let state = 'start'; 
                         lines.forEach(line => {
-                            const tLine = line.trim();
-                            if(!tLine) return;
-
-                            // 1. Check if line is a Source/Metadata line (End of a block)
-                            if (tLine.match(/^SOURCE:/i)) {
-                                // Extract metadata
-                                const match = tLine.match(/SOURCE:\s*([A-Z]{2}):/i);
-                                if (match) currentQ.category = match[1].toUpperCase();
-                                currentQ.pi = tLine.replace("SOURCE:", "").trim();
-                                
-                                // Finalize this question
+                            line = line.trim();
+                            if(!line) return;
+                            const qStart = line.match(/^(\d+)\.\s+(.*)/);
+                            const optStart = line.match(/^([A-D])\.\s+(.*)/);
+                            const keyLine = line.match(/^SOURCE:\s*([A-Z]{2}):/i);
+                            if (qStart || (state !== 'opt' && !optStart && !keyLine)) {
                                 if (currentQ.question && currentQ.options && currentQ.options.length >= 2) {
-                                    // Default missing fields
-                                    if (!currentQ.answer) currentQ.answer = "A";
-                                    if (!currentQ.category) currentQ.category = importCategory;
-                                    
-                                    newQuestions.push({
-                                        cluster: "Imported",
-                                        category: currentQ.category,
-                                        pi: currentQ.pi,
-                                        question: currentQ.question,
-                                        options: currentQ.options,
-                                        answer: currentQ.answer,
-                                        rationale: "Imported from text."
-                                    });
+                                    newQuestions.push(currentQ);
                                 }
-                                // Reset for next question
-                                currentQ = {};
-                                state = 'start';
-                                return;
-                            }
-
-                            // 2. Check if line is an Option (A. ...)
-                            const optMatch = tLine.match(/^([A-D])\.\s+(.*)/);
-                            if (optMatch) {
-                                if (!currentQ.options) currentQ.options = [];
-                                currentQ.options.push(optMatch[2]);
-                                state = 'opt';
-                                return;
-                            }
-
-                            // 3. Check if line is just an Answer Key letter (A, B, C, D)
-                            if (tLine.match(/^[A-D]$/)) {
-                                currentQ.answer = tLine;
-                                return;
-                            }
-
-                            // 4. Otherwise, it is Question Text
-                            // If we haven't started options yet, assume it's question text
-                            if (state === 'start' || state === 'q') {
-                                if (currentQ.question) currentQ.question += " " + tLine;
-                                else currentQ.question = tLine;
+                                currentQ = {
+                                    cluster: "Imported",
+                                    category: importCategory,
+                                    question: qStart ? qStart[2] : line,
+                                    options: [],
+                                    answer: "A",
+                                    rationale: "Imported."
+                                };
                                 state = 'q';
+                            } else if (optStart && currentQ.question) {
+                                state = 'opt';
+                                currentQ.options.push(optStart[2]);
+                            } else if (keyLine && currentQ.question) {
+                                currentQ.category = keyLine[1].toUpperCase();
+                                currentQ.pi = line.replace("SOURCE:", "").trim();
                             }
                         });
+                        if (currentQ.question && currentQ.options && currentQ.options.length >= 2) {
+                            newQuestions.push(currentQ);
+                        }
                     }
 
                     if (newQuestions.length > 0) {
@@ -678,10 +785,9 @@
                         setImportText("");
                         setMode('list');
                     } else {
-                        setNotification({ type: 'error', msg: "No valid questions found. Ensure format matches: Question -> Options -> Answer Letter -> Source" });
+                        setNotification({ type: 'error', msg: "No valid questions found." });
                     }
                 } catch (e) {
-                    console.error(e);
                     setNotification({ type: 'error', msg: "Import parsing failed." });
                 }
             };
@@ -818,7 +924,9 @@
                             <button onClick={() => onAddQuestions(INITIAL_QUESTIONS)} className="flex items-center gap-2 px-3 py-2 bg-green-50 text-green-600 border border-green-200 rounded hover:bg-green-100"><Database size={16}/> Seed Sample Data</button>
                         )}
                         <button onClick={handleDownloadBank} className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-600 border border-blue-200 rounded hover:bg-blue-100" title="Save Bank to JSON File"><Download size={16}/> <span className="hidden md:inline">Backup</span></button>
-                        <button onClick={() => setShowDeleteConfirm(true)} className="flex items-center gap-2 px-3 py-2 bg-red-50 text-red-600 border border-red-200 rounded hover:bg-red-100"><Trash2 size={16}/></button>
+                        {isAdmin && (
+                             <button onClick={() => setShowDeleteConfirm(true)} className="flex items-center gap-2 px-3 py-2 bg-red-50 text-red-600 border border-red-200 rounded hover:bg-red-100"><Trash2 size={16}/></button>
+                        )}
                         <button onClick={() => setMode('import')} className={`flex items-center gap-2 px-4 py-2 rounded font-medium ${mode === 'import' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700'}`}><Plus size={16}/> Import</button>
                         <button onClick={() => setMode('ai')} className={`flex items-center gap-2 px-4 py-2 rounded font-medium ${mode === 'ai' ? 'bg-purple-600 text-white' : 'bg-purple-50 text-purple-700'}`}><Sparkles size={16}/> AI Add</button>
                         <button onClick={() => setMode('list')} className={`flex items-center gap-2 px-4 py-2 rounded font-medium ${mode === 'list' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-700'}`}><List size={16}/> View List</button>
@@ -914,7 +1022,7 @@
                                         <td className="p-3 max-w-xs truncate cursor-pointer" onClick={() => setSelectedQuestion(q)}>{q.question}</td>
                                         <td className="p-3 text-right">
                                             <button onClick={() => setSelectedQuestion(q)} className="text-slate-400 hover:text-blue-600 mr-2"><Eye size={16}/></button>
-                                            <button onClick={() => onDeleteQuestion(q.id)} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button>
+                                            {isAdmin && <button onClick={() => onDeleteQuestion(q.id)} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button>}
                                         </td>
                                         </tr>
                                     ))}
@@ -926,12 +1034,14 @@
                                         <div key={q.id} className="bg-white border border-slate-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer relative group" onClick={() => setSelectedQuestion(q)}>
                                             <div className="flex justify-between items-start mb-2">
                                                 <span className="text-xs font-bold bg-blue-100 text-blue-800 px-2 py-1 rounded">{q.category}</span>
+                                                {isAdmin && (
                                                 <button 
                                                     onClick={(e) => { e.stopPropagation(); onDeleteQuestion(q.id); }} 
                                                     className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
                                                 >
                                                     <Trash2 size={16}/>
                                                 </button>
+                                                )}
                                             </div>
                                             <p className="text-sm text-slate-800 line-clamp-3 mb-2 font-medium">{q.question}</p>
                                             <p className="text-xs text-slate-400 truncate">{q.pi || "No PI assigned"}</p>
@@ -945,22 +1055,75 @@
             );
         }
 
+        // --- ADMIN DASHBOARD ---
+        function AdminDashboard({ submissions }) {
+            const [filterDate, setFilterDate] = useState('all');
+
+            const filteredSubs = submissions.filter(sub => {
+                if (filterDate === 'today') {
+                    return new Date(sub.date).toDateString() === new Date().toDateString();
+                }
+                return true;
+            }).sort((a,b) => new Date(b.date) - new Date(a.date));
+
+            return (
+                <div className="p-8 h-full flex flex-col">
+                    <h2 className="text-2xl font-bold mb-6 text-slate-800 flex items-center gap-2"><Lock className="text-red-600" size={24}/> Admin Portal</h2>
+                    
+                    <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm mb-6 flex-1 overflow-auto">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="font-bold text-lg">Student Submissions</h3>
+                            <select value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="p-2 border rounded">
+                                <option value="all">All Time</option>
+                                <option value="today">Today Only</option>
+                            </select>
+                        </div>
+                        
+                        <table className="w-full text-left">
+                            <thead className="bg-slate-50 text-sm font-bold text-slate-600 border-b">
+                                <tr>
+                                    <th className="p-3">Date</th>
+                                    <th className="p-3">Student Name</th>
+                                    <th className="p-3">Cluster</th>
+                                    <th className="p-3">Score</th>
+                                    <th className="p-3">Details</th>
+                                </tr>
+                            </thead>
+                            <tbody className="text-sm">
+                                {filteredSubs.length === 0 ? <tr><td colSpan="5" className="p-6 text-center text-slate-400">No submissions found.</td></tr> : 
+                                 filteredSubs.map((sub, i) => (
+                                    <tr key={i} className="border-b hover:bg-slate-50">
+                                        <td className="p-3">{new Date(sub.date).toLocaleString()}</td>
+                                        <td className="p-3 font-medium text-slate-800">{sub.studentName}</td>
+                                        <td className="p-3">{sub.cluster}</td>
+                                        <td className="p-3 font-bold text-blue-600">{sub.score}%</td>
+                                        <td className="p-3 text-slate-500">{sub.correctCount}/{sub.totalQuestions}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        }
+
         // --- MAIN APP ---
 
         function DECATestGenerator() {
-            const [activeTab, setActiveTab] = useState('generate'); // Changed default to 'generate'
+            const [activeTab, setActiveTab] = useState('generate'); 
             const [user, setUser] = useState(null);
-            const [questions, setQuestions] = useState([]); // From Firebase
+            const [questions, setQuestions] = useState([]); 
+            const [submissions, setSubmissions] = useState([]);
             const [blueprints, setBlueprints] = useState(DEFAULT_BLUEPRINTS);
             const [storageMode, setStorageMode] = useState('local');
             const [errorMsg, setErrorMsg] = useState(null);
+            const [isAdmin, setIsAdmin] = useState(false);
+            const [studentName, setStudentName] = useState("");
             
-            // State for Generator
+            // Exam State
             const [selectedCluster, setSelectedCluster] = useState("Finance");
             const [examLength, setExamLength] = useState(100);
             const [generatedExam, setGeneratedExam] = useState(null);
-            
-            // State for Taking Exam
             const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
             const [userAnswers, setUserAnswers] = useState({});
             const [examMode, setExamMode] = useState('taking');
@@ -968,102 +1131,85 @@
             // 1. Initialize and Load Data
             useEffect(() => {
                 const init = async () => {
-                    if (useCloud) {
-                        // Check global init error from outside
-                        if (globalInitError) {
-                             setStorageMode('local');
-                             setErrorMsg(globalInitError);
-                             loadLocalQuestions();
-                             return;
-                        }
-                        
+                    if (useCloud && app) {
                         try {
-                            await signInAnonymously(auth);
+                            if (!auth.currentUser) await signInAnonymously(auth);
                             setStorageMode('cloud');
-                            // Setup Snapshot
+                            
+                            // Listen to Questions
                             const qRef = collection(db, 'artifacts', appId, 'public', 'data', 'questions');
-                            return onSnapshot(qRef, (snapshot) => {
+                            onSnapshot(qRef, (snapshot) => {
                                 const loadedQuestions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                                 setQuestions(loadedQuestions);
                             });
+
+                            // Listen to Submissions
+                            const sRef = collection(db, 'artifacts', appId, 'public', 'data', 'submissions');
+                            // Simple query by date descending ideally, but client-side sort for now
+                            onSnapshot(sRef, (snapshot) => {
+                                const subs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                                setSubmissions(subs);
+                            });
+
                         } catch (e) {
-                            console.error("Cloud init failed, falling back to local:", e);
+                            console.error("Cloud init failed:", e);
                             setStorageMode('local');
                             setErrorMsg(e.message);
-                            loadLocalQuestions();
+                            loadLocalData();
                         }
                     } else {
                         setStorageMode('local');
-                        loadLocalQuestions();
+                        loadLocalData();
                     }
                 };
                 init();
             }, []);
 
-            const loadLocalQuestions = () => {
-                const localData = localStorage.getItem('deca_questions');
-                if (localData) setQuestions(JSON.parse(localData));
+            const loadLocalData = () => {
+                const localQ = localStorage.getItem('deca_questions');
+                if (localQ) setQuestions(JSON.parse(localQ));
+                
+                const localS = localStorage.getItem('deca_submissions');
+                if (localS) setSubmissions(JSON.parse(localS));
             };
 
-            // 3. Local Storage for Blueprints (Personal Preference)
-            useEffect(() => {
-                const savedBlueprints = localStorage.getItem('deca_blueprints');
-                if (savedBlueprints) setBlueprints(JSON.parse(savedBlueprints));
-            }, []);
-
+            // 3. Local Storage Sync
             useEffect(() => {
                 localStorage.setItem('deca_blueprints', JSON.stringify(blueprints));
-            }, [blueprints]);
-
-            // 4. Local Storage sync for Questions (if offline)
-            useEffect(() => {
                 if (storageMode === 'local') {
                     localStorage.setItem('deca_questions', JSON.stringify(questions));
+                    localStorage.setItem('deca_submissions', JSON.stringify(submissions));
                 }
-            }, [questions, storageMode]);
+            }, [blueprints, questions, submissions, storageMode]);
 
 
             // HANDLERS
             const handleAddQuestions = async (newQuestions) => {
                 if (storageMode === 'cloud') {
                     const qRef = collection(db, 'artifacts', appId, 'public', 'data', 'questions');
-                    
-                    // Batch writes (limit 500 per batch)
                     const batchSize = 450; 
                     for (let i = 0; i < newQuestions.length; i += batchSize) {
                         const chunk = newQuestions.slice(i, i + batchSize);
                         const batch = writeBatch(db);
                         chunk.forEach(q => {
-                            const newDocRef = doc(qRef); // Auto ID
-                            // Remove temporary local ID if exists to avoid confusion
+                            const newDocRef = doc(qRef); 
                             const { id, ...qData } = q; 
-                            
-                            // Aggressive Sanitization
-                            const cleanData = {
-                                cluster: qData.cluster ?? "Uncategorized",
-                                category: qData.category ?? "SM",
-                                pi: qData.pi ?? "General",
-                                question: qData.question ?? "Empty Question",
-                                options: Array.isArray(qData.options) ? qData.options : ["A","B","C","D"],
-                                answer: qData.answer ?? "A",
-                                rationale: qData.rationale ?? "No rationale."
-                            };
-                            
-                            // Ensure no undefineds slip through in options
+                            // Sanitize
+                            const cleanData = {};
+                            Object.keys(qData).forEach(key => cleanData[key] = qData[key] === undefined ? "N/A" : qData[key]);
                             cleanData.options = cleanData.options.map(o => o ?? "");
-
                             batch.set(newDocRef, cleanData);
                         });
                         await batch.commit();
                     }
                 } else {
-                    // Local Mode
                     const newWithIds = newQuestions.map(q => ({...q, id: `local-${Date.now()}-${Math.random()}`}));
                     setQuestions(prev => [...prev, ...newWithIds]);
                 }
             };
 
             const handleDeleteQuestion = async (id) => {
+                if (!isAdmin) return; // Guard
                 if (storageMode === 'cloud') {
                     await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'questions', id));
                 } else {
@@ -1072,21 +1218,41 @@
             };
 
             const handleDeleteAll = async () => {
+                if (!isAdmin) return;
                 if (storageMode === 'cloud') {
                     const qRef = collection(db, 'artifacts', appId, 'public', 'data', 'questions');
-                    // Need to fetch all IDs first to delete
-                    // Since we have them in state 'questions', use that
                     const batchSize = 450;
                     for (let i = 0; i < questions.length; i += batchSize) {
                         const chunk = questions.slice(i, i + batchSize);
                         const batch = writeBatch(db);
-                        chunk.forEach(q => {
-                            batch.delete(doc(qRef, q.id));
-                        });
+                        chunk.forEach(q => { batch.delete(doc(qRef, q.id)); });
                         await batch.commit();
                     }
                 } else {
                     setQuestions([]);
+                }
+            };
+
+            const handleSaveSubmission = async (subData) => {
+                if (storageMode === 'cloud') {
+                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'submissions'), subData);
+                } else {
+                    setSubmissions(prev => [subData, ...prev]);
+                }
+            };
+
+            const toggleAdmin = () => {
+                if (isAdmin) {
+                    setIsAdmin(false);
+                    setActiveTab('generate');
+                } else {
+                    const pass = prompt("Enter Admin Password:");
+                    if (pass === "ES7gaRLCHyaE") {
+                        setIsAdmin(true);
+                        setActiveTab('admin');
+                    } else {
+                        alert("Incorrect Password");
+                    }
                 }
             };
 
@@ -1099,8 +1265,10 @@
                             onAddQuestions={handleAddQuestions}
                             onDeleteQuestion={handleDeleteQuestion}
                             onDeleteAll={handleDeleteAll}
+                            isAdmin={isAdmin}
                         />
                     );
+                    case 'admin': return <AdminDashboard submissions={submissions} />;
                     case 'generate': return (
                         <GeneratorTab 
                             clusters={Object.keys(blueprints)} 
@@ -1113,8 +1281,9 @@
                             blueprints={blueprints}
                             storageMode={storageMode}
                             errorMsg={errorMsg}
-                            onStartExam={(exam) => {
+                            onStartExam={(exam, name) => {
                                 setGeneratedExam(exam);
+                                setStudentName(name);
                                 setExamMode('taking');
                                 setUserAnswers({});
                                 setCurrentQuestionIndex(0);
@@ -1131,6 +1300,8 @@
                             setUserAnswers={setUserAnswers}
                             currentIndex={currentQuestionIndex}
                             setCurrentIndex={setCurrentQuestionIndex}
+                            studentName={studentName}
+                            onSaveSubmission={handleSaveSubmission}
                             onExit={() => setActiveTab('generate')}
                         />
                     ) : <div className="p-8 text-center text-gray-500">No exam generated yet.</div>;
@@ -1140,41 +1311,50 @@
 
             return (
                 <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col md:flex-row">
-                    <nav className="w-full md:w-64 bg-slate-900 text-white flex-shrink-0">
-                        <div className="p-6">
-                            <h1 className="text-xl font-bold flex items-center gap-2">
-                                <BarChart3 className="text-blue-400" />
-                                DECA Prep
-                            </h1>
-                            <p className="text-xs text-slate-400 mt-1">Exam Generator & Bank</p>
+                    <nav className="w-full md:w-64 bg-slate-900 text-white flex-shrink-0 flex flex-col justify-between">
+                        <div>
+                            <div className="p-6">
+                                <h1 className="text-xl font-bold flex items-center gap-2">
+                                    <BarChart3 className="text-blue-400" />
+                                    DECA Prep
+                                </h1>
+                                <p className="text-xs text-slate-400 mt-1">Exam Generator & Bank</p>
+                            </div>
+                            <ul className="space-y-1 px-3">
+                                {[
+                                    { id: 'generate', label: 'Generate Test', icon: Play },
+                                    { id: 'exam', label: 'Current Session', icon: FileText, disabled: !generatedExam },
+                                    { id: 'blueprints', label: 'Exam Blueprints', icon: Settings },
+                                    { id: 'questions', label: 'Question Bank', icon: Upload },
+                                    ...(isAdmin ? [{ id: 'admin', label: 'Admin Portal', icon: Lock }] : [])
+                                ].map(item => (
+                                    <li key={item.id}>
+                                        <button
+                                            disabled={item.disabled}
+                                            onClick={() => setActiveTab(item.id)}
+                                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                                                activeTab === item.id 
+                                                    ? 'bg-blue-600 text-white' 
+                                                    : item.disabled ? 'text-slate-600 cursor-not-allowed' : 'text-slate-300 hover:bg-slate-800'
+                                            }`}
+                                        >
+                                            <item.icon size={18} />
+                                            {item.label}
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
                         </div>
-                        <ul className="space-y-1 px-3">
-                            {[
-                                { id: 'generate', label: 'Generate Test', icon: Play },
-                                { id: 'exam', label: 'Current Session', icon: FileText, disabled: !generatedExam },
-                                { id: 'blueprints', label: 'Exam Blueprints', icon: Settings },
-                                { id: 'questions', label: 'Question Bank', icon: Upload },
-                            ].map(item => (
-                                <li key={item.id}>
-                                    <button
-                                        disabled={item.disabled}
-                                        onClick={() => setActiveTab(item.id)}
-                                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                                            activeTab === item.id 
-                                                ? 'bg-blue-600 text-white' 
-                                                : item.disabled ? 'text-slate-600 cursor-not-allowed' : 'text-slate-300 hover:bg-slate-800'
-                                        }`}
-                                    >
-                                        <item.icon size={18} />
-                                        {item.label}
-                                    </button>
-                                </li>
-                            ))}
-                        </ul>
+                        <div className="p-4 border-t border-slate-700">
+                             <button onClick={toggleAdmin} className="flex items-center gap-2 text-xs text-slate-400 hover:text-white transition-colors w-full">
+                                {isAdmin ? <LogOut size={14}/> : <Lock size={14}/>}
+                                {isAdmin ? "Logout Admin" : "Admin Login"}
+                             </button>
+                        </div>
                     </nav>
 
                     <main className="flex-1 overflow-auto p-4 md:p-8">
-                        <div className="max-w-6xl mx-auto bg-white shadow-sm border border-slate-200 rounded-xl min-h-[600px]">
+                        <div className="max-w-6xl mx-auto bg-white shadow-sm border border-slate-200 rounded-xl min-h-[600px] flex flex-col">
                             {renderContent()}
                         </div>
                     </main>
