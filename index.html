@@ -42,7 +42,8 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect, useRef, useMemo } from 'react';
         import { createRoot } from 'react-dom/client';
-        import { Save, Trash2, Plus, Play, FileText, Settings, BarChart3, Upload, Check, AlertCircle, X, Download, Sparkles, Loader2, Database, Info, Target, List, BookOpen, GraduationCap, Zap, ChevronRight, Search, Filter, FileUp, FileArchive, Eye, Grid, PieChart, FileJson, Cloud, CloudOff, HardDrive, TriangleAlert, Lock, Flag, LogOut, LayoutGrid, Edit, XCircle } from 'lucide-react';
+        // Fixed: Changed TriangleAlert to AlertTriangle
+        import { Save, Trash2, Plus, Play, FileText, Settings, BarChart3, Upload, Check, AlertCircle, X, Download, Sparkles, Loader2, Database, Info, Target, List, BookOpen, GraduationCap, Zap, ChevronRight, Search, Filter, FileUp, FileArchive, Eye, Grid, PieChart, FileJson, Cloud, CloudOff, HardDrive, AlertTriangle, Lock, Flag, LogOut, LayoutGrid, Edit, XCircle } from 'lucide-react';
         import { initializeApp } from "firebase/app";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
         import { getFirestore, collection, doc, addDoc, deleteDoc, updateDoc, onSnapshot, writeBatch, orderBy, query } from "firebase/firestore";
@@ -1126,58 +1127,6 @@
                             )}
                         </div>
                     )}
-                </div>
-            );
-        }
-
-        // --- ADMIN DASHBOARD ---
-        function AdminDashboard({ submissions }) {
-            const [filterDate, setFilterDate] = useState('all');
-
-            const filteredSubs = submissions.filter(sub => {
-                if (filterDate === 'today') {
-                    return new Date(sub.date).toDateString() === new Date().toDateString();
-                }
-                return true;
-            }).sort((a,b) => new Date(b.date) - new Date(a.date));
-
-            return (
-                <div className="p-8 h-full flex flex-col">
-                    <h2 className="text-2xl font-bold mb-6 text-slate-800 flex items-center gap-2"><Lock className="text-red-600" size={24}/> Admin Portal</h2>
-                    
-                    <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm mb-6 flex-1 overflow-auto">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="font-bold text-lg">Student Submissions</h3>
-                            <select value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="p-2 border rounded">
-                                <option value="all">All Time</option>
-                                <option value="today">Today Only</option>
-                            </select>
-                        </div>
-                        
-                        <table className="w-full text-left">
-                            <thead className="bg-slate-50 text-sm font-bold text-slate-600 border-b">
-                                <tr>
-                                    <th className="p-3">Date</th>
-                                    <th className="p-3">Student Name</th>
-                                    <th className="p-3">Cluster</th>
-                                    <th className="p-3">Score</th>
-                                    <th className="p-3">Details</th>
-                                </tr>
-                            </thead>
-                            <tbody className="text-sm">
-                                {filteredSubs.length === 0 ? <tr><td colSpan="5" className="p-6 text-center text-slate-400">No submissions found.</td></tr> : 
-                                 filteredSubs.map((sub, i) => (
-                                    <tr key={i} className="border-b hover:bg-slate-50">
-                                        <td className="p-3">{new Date(sub.date).toLocaleString()}</td>
-                                        <td className="p-3 font-medium text-slate-800">{sub.studentName}</td>
-                                        <td className="p-3">{sub.cluster}</td>
-                                        <td className="p-3 font-bold text-blue-600">{sub.score}%</td>
-                                        <td className="p-3 text-slate-500">{sub.correctCount}/{sub.totalQuestions}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
                 </div>
             );
         }
