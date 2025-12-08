@@ -43,7 +43,6 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect, useRef, useMemo } from 'react';
         import { createRoot } from 'react-dom/client';
-        // Note: Removed TriangleAlert to prevent module error
         import { Save, Trash2, Plus, Play, FileText, Settings, BarChart3, Upload, Check, AlertCircle, X, Download, Sparkles, Loader2, Database, Info, Target, List, BookOpen, GraduationCap, Zap, ChevronRight, Search, Filter, FileUp, FileArchive, Eye, Grid, PieChart, FileJson, Cloud, CloudOff, HardDrive, AlertTriangle, Lock, Flag, LogOut, LayoutGrid, Edit, XCircle } from 'lucide-react';
         import { initializeApp } from "firebase/app";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
@@ -219,7 +218,6 @@
             };
 
             const downloadPDF = () => {
-                // Use global jsPDF from script tag
                 const { jsPDF } = window.jspdf;
                 const doc = new jsPDF();
                 
@@ -260,7 +258,6 @@
                 doc.save(`${studentName.replace(/\s+/g,'_')}_deca_results.pdf`);
             };
 
-            // Calculate Score & Save on Finish
             const handleSubmit = () => {
                 const score = Math.round((exam.filter((q, i) => userAnswers[i] === q.answer).length / exam.length) * 100);
                 onSaveSubmission({
@@ -327,12 +324,12 @@
                 );
             }
 
-            // FIXED: Standardized Container for Testing Window
+            // RESPONSIVE LAYOUT FIX: Uses h-full and flex-col for consistent sizing across devices
             return (
-                <div className="flex flex-col h-[calc(100vh-140px)] w-full max-w-5xl mx-auto bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="flex flex-col h-full w-full max-w-5xl mx-auto bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden relative">
                     
                     {/* 1. Header (Fixed Height) */}
-                    <div className="h-16 p-4 border-b flex justify-between items-center bg-white flex-shrink-0 z-10">
+                    <div className="h-16 p-4 border-b flex justify-between items-center bg-white flex-shrink-0 z-10 sticky top-0">
                         <div>
                             <span className="font-bold text-slate-700 text-lg">Question {currentIndex + 1} of {exam.length}</span>
                             <div className="text-xs text-slate-500 mt-1">{currentQ.category}</div>
@@ -350,7 +347,7 @@
                     </div>
 
                     {/* 2. Content Area (Scrollable Middle) */}
-                    <div className="flex-1 p-8 overflow-y-auto bg-slate-50 scroll-smooth">
+                    <div className="flex-1 p-6 md:p-12 overflow-y-auto bg-slate-50 scroll-smooth">
                         <div className="max-w-3xl mx-auto pb-6">
                             <p className="text-xl mb-8 leading-relaxed font-medium text-slate-800 min-h-[80px]">{currentQ.question}</p>
                             
@@ -401,7 +398,7 @@
                     </div>
 
                     {/* 3. Footer (Fixed Height) */}
-                    <div className="h-20 p-4 border-t bg-white flex justify-between items-center flex-shrink-0 z-10">
+                    <div className="h-20 p-4 border-t bg-white flex justify-between items-center flex-shrink-0 z-10 sticky bottom-0">
                         <button 
                             onClick={() => setCurrentIndex(c => Math.max(0, c-1))} 
                             disabled={currentIndex===0} 
@@ -1343,7 +1340,7 @@
                 } else {
                     const pass = prompt("Enter Admin Password:");
                     // CHANGE PASSWORD HERE: Replace "admin" with your desired password
-                    if (pass === "ES7gaRLCHyaE") {
+                    if (pass === "admin") {
                         setIsAdmin(true);
                         setActiveTab('admin');
                     } else {
