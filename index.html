@@ -5,19 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DECA Practice Test Generator</title>
     
-    <!-- 1. Suppress Warning -->
-    <script>
-        const originalWarn = console.warn;
-        console.warn = function(...args) {
-            if (args[0] && typeof args[0] === 'string' && args[0].includes('cdn.tailwindcss.com')) return;
-            originalWarn.apply(console, args);
-        };
-    </script>
-
-    <!-- 2. Tailwind CSS -->
+    <!-- 1. Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- 3. Import Map -->
+    <!-- 2. Import Map -->
     <script type="importmap">
         {
             "imports": {
@@ -26,15 +17,17 @@
                 "lucide-react": "https://esm.sh/lucide-react@0.344.0",
                 "firebase/app": "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js",
                 "firebase/auth": "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js",
-                "firebase/firestore": "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js",
-                "jspdf": "https://esm.sh/jspdf@2.5.1",
-                "jspdf-autotable": "https://esm.sh/jspdf-autotable@3.8.2"
+                "firebase/firestore": "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js"
             }
         }
     </script>
     
-    <!-- 4. Babel -->
+    <!-- 3. Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- 4. Global PDF Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 
     <style>
         ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -49,12 +42,10 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect, useRef, useMemo } from 'react';
         import { createRoot } from 'react-dom/client';
-        import { Save, Trash2, Plus, Play, FileText, Settings, BarChart3, Upload, Check, AlertCircle, X, Download, Sparkles, Loader2, Database, Info, Target, List, BookOpen, GraduationCap, Zap, ChevronRight, Search, Filter, FileUp, FileArchive, Eye, Grid, PieChart, FileJson, Cloud, CloudOff, HardDrive, TriangleAlert, Flag, User, Lock, LogOut } from 'lucide-react';
+        import { Save, Trash2, Plus, Play, FileText, Settings, BarChart3, Upload, Check, AlertCircle, X, Download, Sparkles, Loader2, Database, Info, Target, List, BookOpen, GraduationCap, Zap, ChevronRight, Search, Filter, FileUp, FileArchive, Eye, Grid, PieChart, FileJson, Cloud, CloudOff, HardDrive, TriangleAlert, Lock, Flag, LogOut, LayoutGrid, Edit, XCircle } from 'lucide-react';
         import { initializeApp } from "firebase/app";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
-        import { getFirestore, collection, doc, addDoc, deleteDoc, onSnapshot, writeBatch, query, orderBy, getDocs } from "firebase/firestore";
-        import jsPDF from 'jspdf';
-        import autoTable from 'jspdf-autotable';
+        import { getFirestore, collection, doc, addDoc, deleteDoc, updateDoc, onSnapshot, writeBatch, orderBy, query } from "firebase/firestore";
 
         // ------------------------------------------------------------------
         // CONFIGURATION
@@ -130,13 +121,12 @@
             RM: "Risk Management",
             SE: "Selling",
             SM: "Strategic Management",
-            // PFL Categories
-            PF_EI: "Earning Income",
-            PF_SP: "Spending",
-            PF_SA: "Saving",
-            PF_IN: "Investing",
-            PF_CR: "Managing Credit",
-            PF_MR: "Managing Risk"
+            PF_EI: "Earning Income (PFL)",
+            PF_SP: "Spending (PFL)",
+            PF_SA: "Saving (PFL)",
+            PF_IN: "Investing (PFL)",
+            PF_CR: "Managing Credit (PFL)",
+            PF_MR: "Managing Risk (PFL)"
         };
 
         const DEFAULT_BLUEPRINTS = {
@@ -146,7 +136,7 @@
             "Marketing": { BL: 1, CM: 8, CO: 8, EC: 5, EI: 8, FI: 5, IM: 8, MP: 8, NF: 11, OP: 6, PI: 3, PM: 11, PD: 6, PR: 9, SE: 6, SM: 1 },
             "Hospitality": { BL: 2, CO: 8, CR: 10, EC: 5, EI: 8, FI: 5, HR: 5, IM: 8, OP: 10, PD: 5, PM: 5, SE: 5 },
             "Business Management": { BL: 4, CO: 10, CR: 5, EC: 5, EI: 10, FI: 5, HR: 8, IM: 8, OP: 8, PD: 8, PJ: 5, SM: 5 },
-            "Personal Financial Literacy": { PF_EI: 15, PF_SP: 15, PF_SA: 15, PF_IN: 20, PF_CR: 15, PF_MR: 20 } 
+            "Personal Financial Literacy": { PF_EI: 15, PF_SP: 15, PF_SA: 15, PF_IN: 20, PF_CR: 15, PF_MR: 20 }
         };
 
         const INITIAL_QUESTIONS = [
@@ -227,7 +217,10 @@
             };
 
             const downloadPDF = () => {
+                // Correctly access jsPDF from window
+                const { jsPDF } = window.jspdf;
                 const doc = new jsPDF();
+                
                 const score = Math.round((exam.filter((q, i) => userAnswers[i] === q.answer).length / exam.length) * 100);
                 
                 doc.setFontSize(20);
@@ -236,6 +229,7 @@
                 doc.setFontSize(12);
                 doc.text(`Student: ${studentName}`, 14, 30);
                 doc.text(`Score: ${score}%`, 14, 36);
+                doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, 42);
                 
                 const tableData = exam.map((q, i) => {
                     const userAnswer = userAnswers[i] || "Skipped";
@@ -250,8 +244,8 @@
                     ];
                 });
 
-                autoTable(doc, {
-                    startY: 45,
+                doc.autoTable({
+                    startY: 50,
                     head: [['#', 'Status', 'Cat', 'Question', 'Answer', 'Rationale']],
                     body: tableData,
                     columnStyles: { 1: { fontStyle: 'bold' }, 5: { cellWidth: 50 } },
@@ -264,7 +258,6 @@
                 doc.save(`${studentName.replace(/\s+/g,'_')}_deca_results.pdf`);
             };
 
-            // Calculate Score & Save on Finish
             const handleSubmit = () => {
                 const score = Math.round((exam.filter((q, i) => userAnswers[i] === q.answer).length / exam.length) * 100);
                 onSaveSubmission({
@@ -273,7 +266,7 @@
                     date: new Date().toISOString(),
                     totalQuestions: exam.length,
                     correctCount: exam.filter((q, i) => userAnswers[i] === q.answer).length,
-                    cluster: exam[0].cluster // Assuming homogeneous exam
+                    cluster: exam[0].cluster || "Mixed"
                 });
                 setMode('results');
             };
@@ -301,16 +294,16 @@
 
             if (showReview) {
                 return (
-                    <div className="h-full flex flex-col p-8">
+                    <div className="h-full flex flex-col p-8 bg-slate-50">
                         <div className="flex justify-between items-center mb-6">
                             <h2 className="text-2xl font-bold">Review Before Submitting</h2>
-                            <button onClick={() => setShowReview(false)} className="px-4 py-2 border rounded">Back to Exam</button>
+                            <button onClick={() => setShowReview(false)} className="px-4 py-2 border rounded hover:bg-white">Back to Exam</button>
                         </div>
                         <div className="flex-1 overflow-auto grid grid-cols-5 md:grid-cols-10 gap-3 content-start">
                             {exam.map((q, i) => {
                                 const answered = userAnswers[i] !== undefined;
                                 const isFlagged = flagged.has(i);
-                                let bg = answered ? 'bg-blue-100 border-blue-300' : 'bg-slate-100 border-slate-300';
+                                let bg = answered ? 'bg-blue-100 border-blue-300' : 'bg-white border-slate-300';
                                 if (isFlagged) bg = 'bg-amber-100 border-amber-300 ring-2 ring-amber-400';
                                 return (
                                     <button 
@@ -333,7 +326,7 @@
 
             return (
                 <div className="h-full flex flex-col max-w-5xl mx-auto w-full">
-                    {/* Standardized Header - Fixed Height */}
+                    {/* Fixed Height Header */}
                     <div className="h-20 p-4 border-b flex justify-between items-center bg-white flex-shrink-0">
                         <div>
                             <span className="font-bold text-slate-700 text-lg">Question {currentIndex + 1} of {exam.length}</span>
@@ -351,7 +344,7 @@
                         </div>
                     </div>
 
-                    {/* Standardized Content Area - Grows but pushes footer down */}
+                    {/* Scrolling Content Area */}
                     <div className="flex-1 p-8 overflow-y-auto bg-slate-50">
                         <div className="max-w-3xl mx-auto">
                             <p className="text-xl mb-8 leading-relaxed font-medium text-slate-800 min-h-[80px]">{currentQ.question}</p>
@@ -364,7 +357,7 @@
                                     let cls = "w-full text-left p-5 rounded-lg border-2 flex gap-4 transition-all items-center group ";
                                     
                                     if (mode === 'review') {
-                                        if (isCor) cls += "bg-green-50 border-green-500 text-green-900";
+                                        if (isCor) cls += "bg-green-100 border-green-500 text-green-900";
                                         else if (isSel) cls += "bg-red-50 border-red-300";
                                         else cls += "border-slate-200 opacity-60";
                                     } else {
@@ -402,7 +395,7 @@
                         </div>
                     </div>
 
-                    {/* Standardized Footer - Fixed Height */}
+                    {/* Fixed Height Footer */}
                     <div className="h-20 p-4 border-t bg-white flex justify-between items-center flex-shrink-0">
                         <button 
                             onClick={() => setCurrentIndex(c => Math.max(0, c-1))} 
@@ -560,7 +553,7 @@
                             <div>
                                 <label className="block text-sm font-medium text-slate-600 mb-2">Select Cluster</label>
                                 <select value={selectedCluster} onChange={(e) => setSelectedCluster(e.target.value)} className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
-                                    {clusters.map(c => <option key={c} value={c}>{c}</option>)}
+                                    {Object.keys(blueprints).map(c => <option key={c} value={c}>{c}</option>)}
                                 </select>
                             </div>
                             <div>
@@ -652,7 +645,7 @@
             );
         }
 
-        function QuestionBankTab({ questions, onAddQuestions, onDeleteQuestion, onDeleteAll, isAdmin }) {
+        function QuestionBankTab({ questions, onAddQuestions, onDeleteQuestion, onDeleteAll, onEditQuestion, isAdmin }) {
             const [mode, setMode] = useState('list'); 
             const [viewFormat, setViewFormat] = useState('list');
             const [importText, setImportText] = useState("");
@@ -667,6 +660,10 @@
             const [isGenerating, setIsGenerating] = useState(false);
             const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
             const [deleteConfirmText, setDeleteConfirmText] = useState("");
+            
+            // Editing State
+            const [isEditing, setIsEditing] = useState(false);
+            const [editForm, setEditForm] = useState(null);
 
             useEffect(() => {
                 if (notification) {
@@ -856,6 +853,22 @@
                 setFilterCategory(e.target.value);
             };
 
+            // --- Editing Logic ---
+            const startEdit = (q) => {
+                setEditForm({ ...q });
+                setIsEditing(true);
+                setSelectedQuestion(null); // Close view modal if open
+            };
+
+            const saveEdit = async () => {
+                if (editForm) {
+                    await onEditQuestion(editForm);
+                    setIsEditing(false);
+                    setEditForm(null);
+                    setNotification({ type: 'success', msg: 'Question updated.' });
+                }
+            }
+
             const filteredQuestions = questions.filter(q => {
                 const matchesSearch = q.question.toLowerCase().includes(searchTerm.toLowerCase());
                 const matchesCategory = filterCategory === "ALL" || q.category === filterCategory;
@@ -884,6 +897,63 @@
                         </div>
                     )}
 
+                    {/* EDIT MODAL */}
+                    {isEditing && editForm && (
+                        <div className="absolute inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4 backdrop-blur-sm">
+                            <div className="bg-white p-8 rounded-xl shadow-2xl max-w-2xl w-full border border-slate-200 flex flex-col max-h-[90vh] overflow-y-auto">
+                                <h3 className="text-xl font-bold mb-4">Edit Question</h3>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-500">Question Text</label>
+                                        <textarea 
+                                            value={editForm.question} 
+                                            onChange={e => setEditForm({...editForm, question: e.target.value})}
+                                            className="w-full p-2 border rounded h-24"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        {editForm.options.map((opt, i) => (
+                                            <div key={i}>
+                                                <label className="text-xs font-bold text-slate-500">Option {['A','B','C','D'][i]}</label>
+                                                <input 
+                                                    value={opt}
+                                                    onChange={e => {
+                                                        const newOpts = [...editForm.options];
+                                                        newOpts[i] = e.target.value;
+                                                        setEditForm({...editForm, options: newOpts});
+                                                    }}
+                                                    className="w-full p-2 border rounded"
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-500">Correct Answer</label>
+                                        <select 
+                                            value={editForm.answer}
+                                            onChange={e => setEditForm({...editForm, answer: e.target.value})}
+                                            className="w-full p-2 border rounded"
+                                        >
+                                            {['A','B','C','D'].map(l => <option key={l} value={l}>{l}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-500">Rationale</label>
+                                        <textarea 
+                                            value={editForm.rationale}
+                                            onChange={e => setEditForm({...editForm, rationale: e.target.value})}
+                                            className="w-full p-2 border rounded h-20"
+                                        />
+                                    </div>
+                                    <div className="flex justify-end gap-2 pt-4">
+                                        <button onClick={() => setIsEditing(false)} className="px-4 py-2 border rounded">Cancel</button>
+                                        <button onClick={saveEdit} className="px-4 py-2 bg-blue-600 text-white rounded font-bold">Save Changes</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {selectedQuestion && (
                         <div className="absolute inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4 backdrop-blur-sm">
                             <div className="bg-white p-8 rounded-xl shadow-2xl max-w-2xl w-full border border-slate-200 flex flex-col max-h-[80vh]">
@@ -892,7 +962,12 @@
                                         <span className="inline-block px-2 py-1 bg-blue-100 text-blue-800 text-xs font-bold rounded mb-2">{selectedQuestion.category}</span>
                                         <h3 className="text-lg font-bold text-slate-900">{selectedQuestion.pi || "General Question"}</h3>
                                     </div>
-                                    <button onClick={() => setSelectedQuestion(null)} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
+                                    <div className="flex gap-2">
+                                        {isAdmin && (
+                                            <button onClick={() => startEdit(selectedQuestion)} className="text-blue-500 hover:text-blue-700 bg-blue-50 p-2 rounded">Edit</button>
+                                        )}
+                                        <button onClick={() => setSelectedQuestion(null)} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
+                                    </div>
                                 </div>
                                 <div className="overflow-y-auto flex-1 pr-2">
                                     <p className="text-lg text-slate-800 mb-6 font-medium">{selectedQuestion.question}</p>
@@ -1217,6 +1292,16 @@
                 }
             };
 
+            const handleEditQuestion = async (updatedQ) => {
+                if (!isAdmin) return;
+                if (storageMode === 'cloud') {
+                    const { id, ...data } = updatedQ;
+                    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'questions', id), data);
+                } else {
+                    setQuestions(prev => prev.map(q => q.id === updatedQ.id ? updatedQ : q));
+                }
+            };
+
             const handleDeleteAll = async () => {
                 if (!isAdmin) return;
                 if (storageMode === 'cloud') {
@@ -1247,6 +1332,7 @@
                     setActiveTab('generate');
                 } else {
                     const pass = prompt("Enter Admin Password:");
+                    // CHANGE PASSWORD HERE: Replace "admin" with your desired password
                     if (pass === "ES7gaRLCHyaE") {
                         setIsAdmin(true);
                         setActiveTab('admin');
@@ -1265,6 +1351,7 @@
                             onAddQuestions={handleAddQuestions}
                             onDeleteQuestion={handleDeleteQuestion}
                             onDeleteAll={handleDeleteAll}
+                            onEditQuestion={handleEditQuestion}
                             isAdmin={isAdmin}
                         />
                     );
