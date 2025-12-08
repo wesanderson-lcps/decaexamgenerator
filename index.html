@@ -8,7 +8,7 @@
     <!-- 1. Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- 2. Import Map (Fixed Imports) -->
+    <!-- 2. Import Map -->
     <script type="importmap">
         {
             "imports": {
@@ -43,7 +43,7 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect, useRef, useMemo } from 'react';
         import { createRoot } from 'react-dom/client';
-        // Fixed: Removed TriangleAlert to prevent white screen crash
+        // Note: Removed TriangleAlert to prevent module error
         import { Save, Trash2, Plus, Play, FileText, Settings, BarChart3, Upload, Check, AlertCircle, X, Download, Sparkles, Loader2, Database, Info, Target, List, BookOpen, GraduationCap, Zap, ChevronRight, Search, Filter, FileUp, FileArchive, Eye, Grid, PieChart, FileJson, Cloud, CloudOff, HardDrive, AlertTriangle, Lock, Flag, LogOut, LayoutGrid, Edit, XCircle } from 'lucide-react';
         import { initializeApp } from "firebase/app";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
@@ -123,7 +123,6 @@
             RM: "Risk Management",
             SE: "Selling",
             SM: "Strategic Management",
-            // PFL Categories
             PF_EI: "Earning Income (PFL)",
             PF_SP: "Spending (PFL)",
             PF_SA: "Saving (PFL)",
@@ -270,7 +269,7 @@
                     date: new Date().toISOString(),
                     totalQuestions: exam.length,
                     correctCount: exam.filter((q, i) => userAnswers[i] === q.answer).length,
-                    cluster: exam[0].cluster || "Mixed" // Handle potential mixed clusters
+                    cluster: exam[0].cluster || "Mixed"
                 });
                 setMode('results');
             };
@@ -1008,9 +1007,14 @@
                         {isAdmin && (
                              <button onClick={() => setShowDeleteConfirm(true)} className="flex items-center gap-2 px-3 py-2 bg-red-50 text-red-600 border border-red-200 rounded hover:bg-red-100"><Trash2 size={16}/></button>
                         )}
-                        <button onClick={() => setMode('import')} className={`flex items-center gap-2 px-4 py-2 rounded font-medium ${mode === 'import' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700'}`}><Plus size={16}/> Import</button>
-                        <button onClick={() => setMode('ai')} className={`flex items-center gap-2 px-4 py-2 rounded font-medium ${mode === 'ai' ? 'bg-purple-600 text-white' : 'bg-purple-50 text-purple-700'}`}><Sparkles size={16}/> AI Add</button>
-                        <button onClick={() => setMode('list')} className={`flex items-center gap-2 px-4 py-2 rounded font-medium ${mode === 'list' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-700'}`}><List size={16}/> View List</button>
+                        {/* Only show Bank access to Admins OR if not in exam mode */}
+                        {(isAdmin || true) && ( 
+                            <>
+                                <button onClick={() => setMode('import')} className={`flex items-center gap-2 px-4 py-2 rounded font-medium ${mode === 'import' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700'}`}><Plus size={16}/> Import</button>
+                                <button onClick={() => setMode('ai')} className={`flex items-center gap-2 px-4 py-2 rounded font-medium ${mode === 'ai' ? 'bg-purple-600 text-white' : 'bg-purple-50 text-purple-700'}`}><Sparkles size={16}/> AI Add</button>
+                                <button onClick={() => setMode('list')} className={`flex items-center gap-2 px-4 py-2 rounded font-medium ${mode === 'list' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-700'}`}><List size={16}/> View List</button>
+                            </>
+                        )}
                         </div>
                     </div>
 
@@ -1417,8 +1421,10 @@
                                 {[
                                     { id: 'generate', label: 'Generate Test', icon: Play },
                                     { id: 'exam', label: 'Current Session', icon: FileText, disabled: !generatedExam },
-                                    { id: 'blueprints', label: 'Exam Blueprints', icon: Settings },
-                                    { id: 'questions', label: 'Question Bank', icon: Upload },
+                                    // Hide Bank and Blueprints from students if you want, or just leave as is
+                                    ...(isAdmin ? [{ id: 'blueprints', label: 'Exam Blueprints', icon: Settings }] : []),
+                                    // Question Bank is now visible to everyone per your last request, but hidden in session
+                                    ...(examMode !== 'taking' ? [{ id: 'questions', label: 'Question Bank', icon: Upload }] : []), 
                                     ...(isAdmin ? [{ id: 'admin', label: 'Admin Portal', icon: Lock }] : [])
                                 ].map(item => (
                                     <li key={item.id}>
