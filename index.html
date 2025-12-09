@@ -324,9 +324,12 @@
                 );
             }
 
-            // RESPONSIVE LAYOUT FIX: Uses h-full and flex-col for consistent sizing across devices
+            // FIXED: Responsive, Standardized Container
+            // h-[calc(100vh-140px)] creates a fixed window size relative to the viewport
+            // flex-col + flex-shrink-0 for header/footer ensures they stay put
+            // overflow-y-auto for content ensures only the text scrolls
             return (
-                <div className="flex flex-col h-full w-full max-w-5xl mx-auto bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden relative">
+                <div className="flex flex-col h-[calc(100vh-140px)] w-full max-w-5xl mx-auto bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden relative">
                     
                     {/* 1. Header (Fixed Height) */}
                     <div className="h-16 p-4 border-b flex justify-between items-center bg-white flex-shrink-0 z-10 sticky top-0">
@@ -1340,7 +1343,7 @@
                 } else {
                     const pass = prompt("Enter Admin Password:");
                     // CHANGE PASSWORD HERE: Replace "admin" with your desired password
-                    if (pass === "admin") {
+                    if (pass === "ES7gaRLCHyaE") {
                         setIsAdmin(true);
                         setActiveTab('admin');
                     } else {
@@ -1421,7 +1424,7 @@
                                     // Hide Bank and Blueprints from students if you want, or just leave as is
                                     ...(isAdmin ? [{ id: 'blueprints', label: 'Exam Blueprints', icon: Settings }] : []),
                                     // Question Bank is now visible to everyone per your last request, but hidden in session
-                                    ...(examMode !== 'taking' ? [{ id: 'questions', label: 'Question Bank', icon: Upload }] : []), 
+                                    ...(examMode !== 'taking' && isAdmin ? [{ id: 'questions', label: 'Question Bank', icon: Upload }] : []), 
                                     ...(isAdmin ? [{ id: 'admin', label: 'Admin Portal', icon: Lock }] : [])
                                 ].map(item => (
                                     <li key={item.id}>
