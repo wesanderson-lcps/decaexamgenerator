@@ -230,7 +230,15 @@
                     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
                         method: 'POST', 
                         headers: { 'Content-Type': 'application/json' }, 
-                        body: JSON.stringify({ contents: [{ parts: [{ text: `Explain simply: ${currentQ.question} Answer: ${currentQ.answer}. Rationale: ${currentQ.rationale}` }] }] })
+                        body: JSON.stringify({ 
+                            contents: [{ parts: [{ text: `Explain simply: ${currentQ.question} Answer: ${currentQ.answer}. Rationale: ${currentQ.rationale}` }] }],
+                            safetySettings: [
+                                { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+                                { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+                                { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+                                { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+                            ]
+                        })
                     });
                     const data = await response.json();
                     
@@ -539,25 +547,31 @@
                                     Do NOT include markdown formatting.
                                 `;
                                 
-                                // Changed to stable model gemini-1.5-flash
+                                // Changed to stable model gemini-1.5-flash with safety settings
                                 const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
                                     method: 'POST', 
                                     headers: { 'Content-Type': 'application/json' }, 
                                     body: JSON.stringify({ 
                                         contents: [{ parts: [{ text: prompt }] }],
-                                        generationConfig: { responseMimeType: "application/json" }
+                                        generationConfig: { responseMimeType: "application/json" },
+                                        safetySettings: [
+                                            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+                                            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+                                            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+                                            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+                                        ]
                                     })
                                 });
 
                                 if (!response.ok) {
                                     const errData = await response.json();
-                                    throw new Error(`${response.status} ${errData.error?.message || response.statusText}`);
+                                    throw new Error(`${response.status}: ${errData.error?.message || response.statusText}`);
                                 }
 
                                 const data = await response.json();
                                 const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
                                 
-                                if (!text) throw new Error("No text generated");
+                                if (!text) throw new Error("No text generated (Safety blocked?)");
 
                                 const parsed = cleanAndParseJSON(text);
                                 
@@ -576,7 +590,7 @@
                                 }));
                                 newQuestionsAccumulator.push(...generated);
                                 finalExam.push(...generated);
-                                await new Promise(r => setTimeout(r, 800));
+                                await new Promise(r => setTimeout(r, 2000)); // Increased delay to 2s to avoid 429
                             } catch (e) {
                                 console.error(`Error generating questions for ${cat}:`, e);
                                 setAiError(e.message); // Display exact error
@@ -657,7 +671,7 @@
                                 {aiError && (
                                     <div className="mt-2 p-3 bg-red-100 text-red-700 text-xs rounded border border-red-200 whitespace-pre-wrap">
                                         <strong>Generation Failed:</strong> {aiError}
-                                        <br/><em>Note: If you see a 403 Forbidden, your API key domain restriction might be blocking this request.</em>
+                                        <br/><em>Note: 429 = Slow down (Rate Limit). 403 = Domain blocked.</em>
                                         <br/>Questions will default to placeholders.
                                     </div>
                                 )}
@@ -926,7 +940,16 @@
                     const prompt = `Generate ${aiCount} multiple-choice questions for DECA exam. Category: ${aiCategory}. JSON Format: [{"question":"...","options":["A","B","C","D"],"answer":"A","rationale":"..."}]. Do not use markdown.`;
                     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' }, 
-                        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" } })
+                        body: JSON.stringify({ 
+                            contents: [{ parts: [{ text: prompt }] }],
+                            generationConfig: { responseMimeType: "application/json" },
+                            safetySettings: [
+                                { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+                                { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+                                { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+                                { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+                            ]
+                        })
                     });
                     const data = await response.json();
                     
