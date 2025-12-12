@@ -154,22 +154,14 @@
 
         // --- UTILS ---
         const cleanAndParseJSON = (text) => {
-            if (!text) return [];
             try {
-                // Remove markdown fences
                 let cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-                
-                // Try to find the array brackets if there is extra conversational text
                 const firstBracket = cleanText.indexOf('[');
                 const lastBracket = cleanText.lastIndexOf(']');
-                
                 if (firstBracket !== -1 && lastBracket !== -1) {
                     cleanText = cleanText.substring(firstBracket, lastBracket + 1);
                 }
-                
-                // Fix common trailing comma issues
                 cleanText = cleanText.replace(/,\s*([\]}])/g, '$1');
-                
                 return JSON.parse(cleanText);
             } catch (e) {
                 console.error("JSON Parse Error:", e, text);
@@ -179,37 +171,33 @@
 
         // --- HELPER COMPONENTS ---
 
-        function ExamSession({ exam, mode, setMode, userAnswers, setUserAnswers, currentIndex, setCurrentIndex, onExit, onSaveSubmission, studentName, examStartTime }) {
+        function ExamSession({ exam, mode, setMode, userAnswers, setUserAnswers, currentIndex, setCurrentIndex, onExit, onSaveSubmission, studentName }) {
             const currentQ = exam[currentIndex];
             const [explanation, setExplanation] = useState(null);
             const [isExplaining, setIsExplaining] = useState(false);
             const [flagged, setFlagged] = useState(new Set());
             const [showReview, setShowReview] = useState(false);
             const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-            const [now, setNow] = useState(Date.now());
+            
+            // 90 Minute Timer (5400 seconds)
+            const [timeLeft, setTimeLeft] = useState(90 * 60);
 
             useEffect(() => { setExplanation(null); }, [currentIndex]);
 
-            // Timer Tick - Uses the persistent start time from parent prop
+            // Timer Tick
             useEffect(() => {
                 if (mode !== 'taking') return;
                 const timerId = setInterval(() => {
-                    setNow(Date.now());
+                    setTimeLeft(prev => {
+                        if (prev <= 1) {
+                            clearInterval(timerId);
+                            return 0;
+                        }
+                        return prev - 1;
+                    });
                 }, 1000);
                 return () => clearInterval(timerId);
             }, [mode]);
-
-            // Calculate Time Left
-            const duration = 90 * 60; // 90 minutes in seconds
-            const elapsed = Math.floor((now - examStartTime) / 1000);
-            const timeLeft = Math.max(0, duration - elapsed);
-
-            // Auto-submit when time expires
-            useEffect(() => {
-                if (timeLeft === 0 && mode === 'taking') {
-                    handleSubmit();
-                }
-            }, [timeLeft, mode]);
 
             const handleAnswer = (optIndex) => {
                 if (mode === 'review') return;
@@ -226,32 +214,15 @@
             const explainConcept = async () => {
                 setIsExplaining(true);
                 try {
-                    // Changed model to gemini-1.5-flash for better compatibility
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
                         method: 'POST', 
                         headers: { 'Content-Type': 'application/json' }, 
-                        body: JSON.stringify({ 
-                            contents: [{ parts: [{ text: `Explain simply: ${currentQ.question} Answer: ${currentQ.answer}. Rationale: ${currentQ.rationale}` }] }],
-                            safetySettings: [
-                                { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-                                { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-                                { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-                                { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
-                            ]
-                        })
+                        body: JSON.stringify({ contents: [{ parts: [{ text: `Explain simply: ${currentQ.question} Answer: ${currentQ.answer}. Rationale: ${currentQ.rationale}` }] }] })
                     });
                     const data = await response.json();
-                    
-                    if (data.error) {
-                        throw new Error(data.error.message || "API Error");
-                    }
-
                     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
                     setExplanation(typeof text === 'string' ? text : "Could not load explanation.");
-                } catch(e) { 
-                    console.error(e); 
-                    setExplanation(`Error: ${e.message}. (Check API Quota/Domain)`); 
-                } finally { setIsExplaining(false); }
+                } catch(e) { console.error(e); setExplanation("Error connecting to AI Tutor."); } finally { setIsExplaining(false); }
             };
 
             const downloadPDF = () => {
@@ -308,6 +279,13 @@
                 setMode('results');
             };
 
+            // Auto-submit when time expires
+            useEffect(() => {
+                if (timeLeft === 0 && mode === 'taking') {
+                    handleSubmit();
+                }
+            }, [timeLeft, mode]);
+
             const formatTime = (seconds) => {
                 const m = Math.floor(seconds / 60);
                 const s = seconds % 60;
@@ -320,7 +298,7 @@
 
             const confirmExit = () => {
                 setShowCancelConfirm(false);
-                onExit(); // This function now fully clears the exam state in the parent
+                onExit();
             };
 
             if (mode === 'results') {
@@ -332,7 +310,7 @@
                         <div className="flex gap-4 flex-wrap justify-center">
                             <button onClick={() => { setMode('review'); setCurrentIndex(0); }} className="px-6 py-2 border rounded hover:bg-slate-50">Review Answers</button>
                             <button onClick={downloadPDF} className="px-6 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 flex items-center gap-2"><Download size={18}/> Download PDF</button>
-                            <button onClick={confirmExit} className="px-6 py-2 bg-slate-900 text-white rounded hover:bg-slate-800">Exit</button>
+                            <button onClick={onExit} className="px-6 py-2 bg-slate-900 text-white rounded hover:bg-slate-800">Exit</button>
                         </div>
                     </div>
                 );
@@ -370,6 +348,7 @@
                 );
             }
 
+            // RESPONSIVE LAYOUT FIX: Uses h-full and flex-col for consistent sizing across devices
             return (
                 <div className="flex flex-col h-full w-full max-w-5xl mx-auto bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden relative">
                     
@@ -482,7 +461,7 @@
                                 {currentIndex === exam.length - 1 ? 'Review & Submit' : 'Next Question'}
                             </button>
                         ) : (
-                             <button onClick={confirmExit} className="px-8 py-2 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-900">Finish Review</button>
+                             <button onClick={onExit} className="px-8 py-2 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-900">Finish Review</button>
                         )}
                     </div>
                 </div>
@@ -494,7 +473,6 @@
             const [isGenerating, setIsGenerating] = useState(false);
             const [progress, setProgress] = useState("");
             const [studentName, setStudentName] = useState("");
-            const [aiError, setAiError] = useState(null); // Track AI errors for UI
 
             const handleGenerate = async () => {
                 if (!studentName.trim()) {
@@ -503,7 +481,6 @@
                 }
 
                 setIsGenerating(true);
-                setAiError(null);
                 const blueprint = blueprints[selectedCluster];
                 if (!blueprint) return;
 
@@ -547,38 +524,17 @@
                                     Do NOT include markdown formatting.
                                 `;
                                 
-                                // Changed to stable model gemini-1.5-flash with safety settings
-                                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
                                     method: 'POST', 
                                     headers: { 'Content-Type': 'application/json' }, 
                                     body: JSON.stringify({ 
                                         contents: [{ parts: [{ text: prompt }] }],
-                                        generationConfig: { responseMimeType: "application/json" },
-                                        safetySettings: [
-                                            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-                                            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-                                            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-                                            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
-                                        ]
+                                        generationConfig: { responseMimeType: "application/json" }
                                     })
                                 });
-
-                                if (!response.ok) {
-                                    const errData = await response.json();
-                                    throw new Error(`${response.status}: ${errData.error?.message || response.statusText}`);
-                                }
-
                                 const data = await response.json();
                                 const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                                
-                                if (!text) throw new Error("No text generated (Safety blocked?)");
-
                                 const parsed = cleanAndParseJSON(text);
-                                
-                                if (!Array.isArray(parsed) || parsed.length === 0) {
-                                    throw new Error("Invalid format");
-                                }
-
                                 const generated = parsed.map(q => ({
                                     cluster: "AI Generated",
                                     category: cat,
@@ -590,11 +546,9 @@
                                 }));
                                 newQuestionsAccumulator.push(...generated);
                                 finalExam.push(...generated);
-                                await new Promise(r => setTimeout(r, 2000)); // Increased delay to 2s to avoid 429
+                                await new Promise(r => setTimeout(r, 800));
                             } catch (e) {
-                                console.error(`Error generating questions for ${cat}:`, e);
-                                setAiError(e.message); // Display exact error
-                                // Fallback to placeholders
+                                console.error("Error generating for", cat, e);
                                 for(let i=0; i<missingCount; i++) finalExam.push(createPlaceholder(cat, selectedCluster, i));
                             }
                         } else {
@@ -667,14 +621,6 @@
                                     <label htmlFor="useAI" className="font-bold text-purple-900 cursor-pointer flex items-center gap-2"><Sparkles size={18}/> Magic AI Fill</label>
                                 </div>
                                 <p className="text-xs text-purple-700 ml-8">If checked, Gemini AI will automatically generate new questions to fill gaps in the selected cluster.</p>
-                                
-                                {aiError && (
-                                    <div className="mt-2 p-3 bg-red-100 text-red-700 text-xs rounded border border-red-200 whitespace-pre-wrap">
-                                        <strong>Generation Failed:</strong> {aiError}
-                                        <br/><em>Note: 429 = Slow down (Rate Limit). 403 = Domain blocked.</em>
-                                        <br/>Questions will default to placeholders.
-                                    </div>
-                                )}
                             </div>
 
                             <div className="pt-4">
@@ -938,25 +884,11 @@
                 setIsGenerating(true);
                 try {
                     const prompt = `Generate ${aiCount} multiple-choice questions for DECA exam. Category: ${aiCategory}. JSON Format: [{"question":"...","options":["A","B","C","D"],"answer":"A","rationale":"..."}]. Do not use markdown.`;
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' }, 
-                        body: JSON.stringify({ 
-                            contents: [{ parts: [{ text: prompt }] }],
-                            generationConfig: { responseMimeType: "application/json" },
-                            safetySettings: [
-                                { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-                                { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-                                { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-                                { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
-                            ]
-                        })
+                        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" } })
                     });
                     const data = await response.json();
-                    
-                    if (data.error) {
-                        throw new Error(data.error.message || "API Error");
-                    }
-
                     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
                     const parsed = cleanAndParseJSON(text);
                     const generated = parsed.map(q => ({
@@ -966,10 +898,7 @@
                     await onAddQuestions(generated);
                     setNotification({ type: 'success', msg: `Generated and Saved ${generated.length} questions.` });
                     setMode('list');
-                } catch(e) { 
-                    console.error(e); 
-                    setNotification({ type: 'error', msg: `AI Error: ${e.message}` });
-                } finally { setIsGenerating(false); }
+                } catch(e) { console.error(e); } finally { setIsGenerating(false); }
             };
 
             const handleFilterSelect = (e) => {
@@ -1359,7 +1288,6 @@
             const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
             const [userAnswers, setUserAnswers] = useState({});
             const [examMode, setExamMode] = useState('taking');
-            const [examStartTime, setExamStartTime] = useState(null); // Track absolute start time
             
             // 1. Auth Effect (Run ONCE)
             useEffect(() => {
@@ -1562,7 +1490,6 @@
                                 setExamMode('taking');
                                 setUserAnswers({});
                                 setCurrentQuestionIndex(0);
-                                setExamStartTime(Date.now()); // Set absolute start time
                                 setActiveTab('exam');
                             }}
                         />
@@ -1577,16 +1504,8 @@
                             currentIndex={currentQuestionIndex}
                             setCurrentIndex={setCurrentQuestionIndex}
                             studentName={studentName}
-                            examStartTime={examStartTime} // Pass persistent time
                             onSaveSubmission={handleSaveSubmission}
-                            onExit={() => {
-                                setGeneratedExam(null); // Reset exam state fully
-                                setUserAnswers({});
-                                setCurrentQuestionIndex(0);
-                                setExamMode('taking');
-                                setExamStartTime(null); // Kill the timer
-                                setActiveTab('generate');
-                            }}
+                            onExit={() => setActiveTab('generate')}
                         />
                     ) : <div className="p-8 text-center text-gray-500">No exam generated yet.</div>;
                     default: return null;
