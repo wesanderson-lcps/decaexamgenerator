@@ -263,8 +263,8 @@
             const explainConcept = async () => {
                 setIsExplaining(true);
                 try {
-                    // Updated to standard 'gemini-1.5-flash-001' alias for the latest stable version
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-001:generateContent?key=${apiKey}`, {
+                    // Updated to standard 'gemini-2.5-flash-preview-09-2025' alias for the latest stable version
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
                         method: 'POST', 
                         headers: { 'Content-Type': 'application/json' }, 
                         body: JSON.stringify({ contents: [{ parts: [{ text: `Explain simply: ${currentQ.question} Answer: ${currentQ.answer}. Rationale: ${currentQ.rationale}` }] }] })
@@ -575,8 +575,8 @@
                                     Output MUST be a JSON Object with a "questions" key containing the list.
                                 `;
                                 
-                                // Updated to standard 'gemini-1.5-flash-001' alias with safety settings AND Response Schema
-                                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-001:generateContent?key=${apiKey}`, {
+                                // Updated to standard 'gemini-2.5-flash-preview-09-2025' alias with safety settings AND Response Schema
+                                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
                                     method: 'POST', 
                                     headers: { 'Content-Type': 'application/json' }, 
                                     body: JSON.stringify({ 
@@ -988,8 +988,8 @@
                 setIsGenerating(true);
                 try {
                     const prompt = `Generate ${aiCount} multiple-choice questions for DECA exam. Category: ${aiCategory}. JSON Format: [{"question":"...","options":["A","B","C","D"],"answer":"A","rationale":"..."}]. Do not use markdown.`;
-                    // Updated to standard 'gemini-1.5-flash-001' alias
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-001:generateContent?key=${apiKey}`, {
+                    // Updated to standard 'gemini-2.5-flash-preview-09-2025' alias
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' }, 
                         body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" } })
                     });
