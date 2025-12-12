@@ -1410,8 +1410,14 @@
                             // Using manual config requires anonymous auth as custom tokens won't match
                             await signInAnonymously(auth);
                         } catch (e) {
-                            console.error("Auth Failed", e);
-                            setErrorMsg("Authentication failed. Using offline mode.");
+                            // SPECIFIC FIX FOR REFERER BLOCKED
+                            if (e.message && e.message.includes('requests-from-referer')) {
+                                console.warn("Firebase Domain Restriction: Cloud features disabled in this environment.");
+                                setErrorMsg("Cloud sync disabled (Domain Restricted). App working in Offline Mode.");
+                            } else {
+                                console.error("Auth Failed", e);
+                                setErrorMsg("Authentication failed. Using offline mode.");
+                            }
                             setStorageMode('local');
                         }
                     }
