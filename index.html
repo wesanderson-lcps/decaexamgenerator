@@ -662,7 +662,7 @@
             );
         }
 
-        function BlueprintsTab({ blueprints, setBlueprints }) {
+        function BlueprintsTab({ blueprints, setBlueprints, isAdmin }) {
             const [editingCluster, setEditingCluster] = useState(Object.keys(blueprints)[0]);
             const handleUpdate = (cat, val) => {
                 setBlueprints(prev => ({
@@ -684,7 +684,11 @@
                             {Object.keys(currentBlueprint).sort().map(code => (
                                 <div key={code} className={`flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-lg ${currentBlueprint[code] === 0 ? 'opacity-50' : ''}`}>
                                     <div className="flex flex-col"><span className="font-medium text-slate-700 text-sm">{INSTRUCTIONAL_AREAS[code] || code}</span><span className="text-xs text-slate-400 font-mono">{code}</span></div>
-                                    <input type="number" value={currentBlueprint[code]} onChange={(e) => handleUpdate(code, e.target.value)} className="w-16 p-2 text-right border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+                                    {isAdmin ? (
+                                        <input type="number" value={currentBlueprint[code]} onChange={(e) => handleUpdate(code, e.target.value)} className="w-16 p-2 text-right border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+                                    ) : (
+                                        <span className="w-16 p-2 text-right font-bold text-slate-600">{currentBlueprint[code]}</span>
+                                    )}
                                 </div>
                             ))}
                         </div>
@@ -1184,8 +1188,9 @@
         }
 
         // --- ADMIN DASHBOARD ---
-        function AdminDashboard({ submissions }) {
+        function AdminDashboard({ submissions, questions, onAddQuestions, onDeleteQuestion, onDeleteAll, onEditQuestion, isAdmin }) {
             const [filterDate, setFilterDate] = useState('all');
+            const [activeSubTab, setActiveSubTab] = useState('submissions');
 
             const filteredSubs = submissions.filter(sub => {
                 if (filterDate === 'today') {
@@ -1198,38 +1203,66 @@
                 <div className="p-8 h-full flex flex-col">
                     <h2 className="text-2xl font-bold mb-6 text-slate-800 flex items-center gap-2"><Lock className="text-red-600" size={24}/> Admin Portal</h2>
                     
-                    <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm mb-6 flex-1 overflow-auto">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="font-bold text-lg">Student Submissions</h3>
-                            <select value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="p-2 border rounded">
-                                <option value="all">All Time</option>
-                                <option value="today">Today Only</option>
-                            </select>
-                        </div>
-                        
-                        <table className="w-full text-left">
-                            <thead className="bg-slate-50 text-sm font-bold text-slate-600 border-b">
-                                <tr>
-                                    <th className="p-3">Date</th>
-                                    <th className="p-3">Student Name</th>
-                                    <th className="p-3">Cluster</th>
-                                    <th className="p-3">Score</th>
-                                    <th className="p-3">Details</th>
-                                </tr>
-                            </thead>
-                            <tbody className="text-sm">
-                                {filteredSubs.length === 0 ? <tr><td colSpan="5" className="p-6 text-center text-slate-400">No submissions found.</td></tr> : 
-                                 filteredSubs.map((sub, i) => (
-                                    <tr key={i} className="border-b hover:bg-slate-50">
-                                        <td className="p-3">{new Date(sub.date).toLocaleString()}</td>
-                                        <td className="p-3 font-medium text-slate-800">{sub.studentName}</td>
-                                        <td className="p-3">{sub.cluster}</td>
-                                        <td className="p-3 font-bold text-blue-600">{sub.score}%</td>
-                                        <td className="p-3 text-slate-500">{sub.correctCount}/{sub.totalQuestions}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                    <div className="flex gap-4 mb-4 border-b">
+                        <button 
+                            onClick={() => setActiveSubTab('submissions')}
+                            className={`pb-2 px-4 font-medium transition-colors ${activeSubTab === 'submissions' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-800'}`}
+                        >
+                            Student Results
+                        </button>
+                        <button 
+                            onClick={() => setActiveSubTab('questions')}
+                            className={`pb-2 px-4 font-medium transition-colors ${activeSubTab === 'questions' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-800'}`}
+                        >
+                            Question Bank Management
+                        </button>
+                    </div>
+
+                    <div className="bg-white border border-slate-200 rounded-xl shadow-sm mb-6 flex-1 overflow-hidden flex flex-col">
+                        {activeSubTab === 'submissions' ? (
+                            <div className="p-6 flex-1 overflow-auto">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="font-bold text-lg">Student Submissions</h3>
+                                    <select value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="p-2 border rounded">
+                                        <option value="all">All Time</option>
+                                        <option value="today">Today Only</option>
+                                    </select>
+                                </div>
+                                
+                                <table className="w-full text-left">
+                                    <thead className="bg-slate-50 text-sm font-bold text-slate-600 border-b">
+                                        <tr>
+                                            <th className="p-3">Date</th>
+                                            <th className="p-3">Student Name</th>
+                                            <th className="p-3">Cluster</th>
+                                            <th className="p-3">Score</th>
+                                            <th className="p-3">Details</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="text-sm">
+                                        {filteredSubs.length === 0 ? <tr><td colSpan="5" className="p-6 text-center text-slate-400">No submissions found.</td></tr> : 
+                                         filteredSubs.map((sub, i) => (
+                                            <tr key={i} className="border-b hover:bg-slate-50">
+                                                <td className="p-3">{new Date(sub.date).toLocaleString()}</td>
+                                                <td className="p-3 font-medium text-slate-800">{sub.studentName}</td>
+                                                <td className="p-3">{sub.cluster}</td>
+                                                <td className="p-3 font-bold text-blue-600">{sub.score}%</td>
+                                                <td className="p-3 text-slate-500">{sub.correctCount}/{sub.totalQuestions}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <QuestionBankTab 
+                                questions={questions} 
+                                onAddQuestions={onAddQuestions}
+                                onDeleteQuestion={onDeleteQuestion}
+                                onDeleteAll={onDeleteAll}
+                                onEditQuestion={onEditQuestion}
+                                isAdmin={isAdmin}
+                            />
+                        )}
                     </div>
                 </div>
             );
@@ -1427,10 +1460,11 @@
 
             const renderContent = () => {
                 switch (activeTab) {
-                    case 'blueprints': return <BlueprintsTab blueprints={blueprints} setBlueprints={setBlueprints} />;
-                    case 'questions': return (
-                        <QuestionBankTab 
-                            questions={questions} 
+                    case 'blueprints': return <BlueprintsTab blueprints={blueprints} setBlueprints={setBlueprints} isAdmin={isAdmin} />;
+                    case 'admin': return (
+                        <AdminDashboard 
+                            submissions={submissions}
+                            questions={questions}
                             onAddQuestions={handleAddQuestions}
                             onDeleteQuestion={handleDeleteQuestion}
                             onDeleteAll={handleDeleteAll}
@@ -1438,7 +1472,6 @@
                             isAdmin={isAdmin}
                         />
                     );
-                    case 'admin': return <AdminDashboard submissions={submissions} />;
                     case 'generate': return (
                         <GeneratorTab 
                             clusters={Object.keys(blueprints)} 
@@ -1494,10 +1527,7 @@
                                 {[
                                     { id: 'generate', label: 'Generate Test', icon: Play },
                                     { id: 'exam', label: 'Current Session', icon: FileText, disabled: !generatedExam },
-                                    // Hide Bank and Blueprints from students if you want, or just leave as is
-                                    ...(isAdmin ? [{ id: 'blueprints', label: 'Exam Blueprints', icon: Settings }] : []),
-                                    // Question Bank is now visible to everyone per your last request, but hidden in session
-                                    ...(examMode !== 'taking' ? [{ id: 'questions', label: 'Question Bank', icon: Upload }] : []), 
+                                    { id: 'blueprints', label: 'Exam Blueprints', icon: Settings },
                                     ...(isAdmin ? [{ id: 'admin', label: 'Admin Portal', icon: Lock }] : [])
                                 ].map(item => (
                                     <li key={item.id}>
